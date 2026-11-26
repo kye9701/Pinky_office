@@ -49,6 +49,49 @@
     return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
+  /* 단톡방 시각 표기: 오후 9:28 */
+  function fmtChatTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var h = d.getHours();
+    var ap = h < 12 ? '오전' : '오후';
+    var hh = h % 12; if (hh === 0) hh = 12;
+    var mm = d.getMinutes();
+    return ap + ' ' + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  /* 좌석 맵·활동 표기를 위한 상대 시간 */
+  function relTime(iso) {
+    var t = new Date(iso).getTime();
+    if (!t) return '방금';
+    var diff = Math.max(0, Date.now() - t);
+    var min = Math.floor(diff / 60000);
+    if (min < 1) return '방금';
+    if (min < 60) return min + '분 전';
+    var hour = Math.floor(min / 60);
+    if (hour < 24) return hour + '시간 전';
+    return Math.floor(hour / 24) + '일 전';
+  }
+
+  function dayKey(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function dayLabel(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var days = ['일', '월', '화', '수', '목', '금', '토'];
+    var now = new Date();
+    var same = dayKey(iso) === dayKey(now.toISOString());
+    var y = new Date(now.getTime() - 86400000);
+    var label = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + days[d.getDay()] + '요일';
+    if (same) return '오늘 · ' + label;
+    if (dayKey(iso) === dayKey(y.toISOString())) return '어제 · ' + label;
+    return label;
+  }
+
   function badgeClass(status) {
     switch (status) {
       case '대장': return 'badge-chief';
@@ -172,7 +215,7 @@
     return {
       version: STATE_VERSION,
       demoMode: true,
-      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false },
+      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false, wakeMode: '전원' },
       members: defaultMembers(),
       tasks: [
         {
@@ -198,7 +241,7 @@
           createdAt: t(95), updatedAt: t(15), demo: true,
           messages: [
             { id: uid('m'), from: 'chief', text: '핑키오피스 첫 화면부터 띄워줘. 남편 폰에 있는 AP AI 오피스처럼, 우리 팀 이름으로.', at: t(95) },
-            { id: uid('m'), from: 'member', text: '결론: 첫 화면 준비 완료했어요.\n한 일: 3D 오피스 그림 + 우리 팀 카드 + 오늘 상태 바.\n확인 필요: 팀원 이름·역할 이대로 갈까요?\n다음 단계: 교육서 본문 채우기.', at: t(15) }
+            { id: uid('m'), from: 'member', via: 'web', text: '결론: 첫 화면 준비 완료했어요.\n한 일: 3D 오피스 그림 + 우리 팀 카드 + 오늘 상태 바.\n확인 필요: 팀원 이름·역할 이대로 갈까요?\n다음 단계: 교육서 본문 채우기.', at: t(15) }
           ]
         },
         {
@@ -206,7 +249,7 @@
           createdAt: t(200), updatedAt: t(160), demo: true,
           messages: [
             { id: uid('m'), from: 'chief', text: '팀 운영 규칙 5개로 교육서 초안 잡아줘.', at: t(200) },
-            { id: uid('m'), from: 'member', text: '결론: 5개 규칙 초안 완성.\n한 일: 승인 우선·티켓 하나에 하나·확인 필요 표시·검수 순서·기록 남기기.\n확인 필요: 없음.\n다음 단계: 교육서 탭에 붙이기.', at: t(160) }
+            { id: uid('m'), from: 'member', via: 'web', text: '결론: 5개 규칙 초안 완성.\n한 일: 승인 우선·티켓 하나에 하나·확인 필요 표시·검수 순서·기록 남기기.\n확인 필요: 없음.\n다음 단계: 교육서 탭에 붙이기.', at: t(160) }
           ]
         },
         {
@@ -222,7 +265,7 @@
 
   /* ---------- 상태 ---------- */
   var state = loadState();
-  var ui = { view: 'office', statusFilter: '전체', ownerFilter: null, threadId: null };
+  var ui = { view: 'meeting', statusFilter: '전체', ownerFilter: null, threadId: null, seatId: null, replyTarget: null, officeOpen: true };
 
   /* 실시간 DB(Google Apps Script) 연결 상태 */
   var API_POLL_MS = 15000;
@@ -264,7 +307,8 @@
           webhookKind: (saved.settings && saved.settings.webhookKind) || 'n8n',
           apiUrl: (saved.settings && saved.settings.apiUrl) || '',
           apiSecret: (saved.settings && saved.settings.apiSecret) || '',
-          dirty: !!(saved.settings && saved.settings.dirty)
+          dirty: !!(saved.settings && saved.settings.dirty),
+          wakeMode: (saved.settings && saved.settings.wakeMode) || '전원'
         },
         members: members,
         tasks: tasks,
@@ -700,6 +744,8 @@
 
   function switchView(name) {
     ui.view = name;
+    document.body.classList.remove('view-meeting', 'view-office', 'view-board');
+    document.body.classList.add('view-' + name);
     ['office', 'meeting', 'board'].forEach(function (v) {
       var view = $('view-' + v);
       if (view) {
@@ -729,6 +775,76 @@
       '대기 <b>' + s.waiting + '</b>',
       '미연결 <b>' + s.offline + '</b>'
     ].join('<span class="sep">·</span>');
+  }
+
+  /* ---------- 렌더: 오피스 좌석 맵 ---------- */
+  /* 좌석 좌표는 office 이미지(1672×941) 안의 책상·소파·러그 위치를 %로 적은 것 */
+  var SEATS = {
+    yeeun:    { x: 46,   y: 61 },
+    pinky:    { x: 57.5, y: 55 },
+    gpt:      { x: 32.5, y: 45 },
+    claude:   { x: 40,   y: 52 },
+    gemini:   { x: 49.5, y: 38.5 },
+    cue:      { x: 53.5, y: 47 },
+    keyring:  { x: 65.5, y: 47.5 },
+    vooy:     { x: 71.5, y: 50 },
+    manus:    { x: 78,   y: 53.5 },
+    muse:     { x: 21,   y: 45 },
+    hark:     { x: 36,   y: 72 },
+    instinct: { x: 45,   y: 77 },
+    groq:     { x: 80,   y: 30 }
+  };
+  var SPARE_SEATS = [
+    { x: 26, y: 64 }, { x: 61, y: 72 }, { x: 88, y: 44 }, { x: 14, y: 58 }, { x: 50, y: 88 }, { x: 68, y: 86 }
+  ];
+  var RINGS = ['#ff7a9c', '#ffb26b', '#7ee0c0', '#8fb8ff', '#c79bff', '#ffd166', '#6ee7d7', '#ff9bd2', '#9be15d', '#f2a2ff', '#7dd3fc', '#ffc0a6', '#b0f0c0'];
+
+  function ringOf(id) {
+    var i = 0;
+    for (var k = 0; k < state.members.length; k++) { if (state.members[k].id === id) { i = k; break; } }
+    return RINGS[i % RINGS.length];
+  }
+
+  function renderOfficeMeta() {
+    var working = state.members.filter(function (m) { return m.status !== '미연결'; }).length;
+    if ($('officeCount')) $('officeCount').textContent = String(working);
+    var latest = visibleThreads()[0];
+    var live = latest
+      ? memberName(latest.memberId) + ' ' + relTime(latest.updatedAt || latest.createdAt) + ' 활동'
+      : '오늘도 출근 중';
+    if ($('officeLive')) $('officeLive').textContent = live;
+    if ($('liveNote')) $('liveNote').textContent = live;
+  }
+
+  function renderSeatMap() {
+    var layer = $('seatLayer');
+    if (!layer) return;
+    var spare = 0;
+    layer.innerHTML = state.members.map(function (m) {
+      var spot = SEATS[m.id];
+      if (!spot) { spot = SPARE_SEATS[spare % SPARE_SEATS.length]; spare++; }
+      var cls = 'seat';
+      if (m.isChief) cls += ' is-chief';
+      if (m.id === 'pinky') cls += ' is-pinky';
+      if (m.status === '미연결') cls += ' is-off';
+      if (m.status === '작업 중') cls += ' is-working';
+      return '<button type="button" class="' + cls + '" data-seat="' + esc(m.id) + '"'
+        + ' style="--x:' + spot.x + '%;--y:' + spot.y + '%;--ring:' + ringOf(m.id) + '"'
+        + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + m.status) + '">'
+        + '<span class="seat-dot" aria-hidden="true"></span>'
+        + '<span class="seat-ava" aria-hidden="true">' + esc(m.emoji || '🙂') + '</span>'
+        + '<span class="seat-name">' + esc(m.name) + '</span>'
+        + '</button>';
+    }).join('');
+  }
+
+  function renderWake() {
+    var mode = (state.settings && state.settings.wakeMode) || '전원';
+    if ($('wakeLabel')) $('wakeLabel').textContent = '깨움: ' + mode;
+    if ($('wakeToggle')) $('wakeToggle').setAttribute('aria-pressed', mode === '지명만' ? 'true' : 'false');
+    if ($('wakeHint')) $('wakeHint').textContent = mode === '지명만' ? '지명한 팀원만 답해요' : '필요한 팀원만 부르려면 「지명만」';
+    var go = $('wakeGo');
+    if (go) { go.hidden = mode === '지명만'; go.textContent = '지명만으로 바꾸기'; }
   }
 
   function renderTeam() {
@@ -776,6 +892,110 @@
     if (current && memberById(current) && !memberById(current).isChief) sel.value = current;
   }
 
+  function renderComposeTarget() {
+    var sel = $('composeTo');
+    var el = $('composeTarget');
+    if (!sel || !el) return;
+    var m = memberById(sel.value);
+    el.textContent = m ? (m.emoji + ' ' + m.name + '에게 전달') : '전원에게 전달';
+  }
+
+  function renderReplyTarget() {
+    var box = $('replyTarget');
+    if (!box) return;
+    var t = null;
+    for (var i = 0; i < state.threads.length; i++) if (state.threads[i].id === ui.replyTarget) t = state.threads[i];
+    if (!t) { ui.replyTarget = null; box.hidden = true; }
+    else {
+      box.hidden = false;
+      if ($('replyTargetText')) $('replyTargetText').textContent = '이어서 · ' + t.title;
+    }
+    if ($('composeBody')) $('composeBody').placeholder = t ? memberName(t.memberId) + '에게 이어서 말하기' : '메시지 입력';
+  }
+
+  /* ---------- 렌더: 단톡방 말풍선 ---------- */
+  function ticketBar(t) {
+    return '<div class="ticket-bar">'
+      + '<button type="button" class="tb-main" data-thread="' + esc(t.id) + '">'
+      + '<span class="tb-ico" aria-hidden="true">🎫</span>'
+      + '<span class="tb-title">' + esc(t.title) + '</span>'
+      + '<span class="tag ' + tagClass(t.status) + '">' + esc(t.status) + '</span>'
+      + '<span class="tb-more">전체보기 ›</span>'
+      + '</button>'
+      + '<button type="button" class="tb-reply" data-reply="' + esc(t.id) + '" aria-label="이 티켓에 이어서 말하기">↩</button>'
+      + '</div>';
+  }
+
+  function bubble(t, msg) {
+    var chief = msg.from === 'chief';
+    var via = viaLabel(msg.via);
+    var isTg = via.indexOf('텔레그램') === 0;
+    var src = via ? '<span class="src-badge' + (isTg ? ' is-tg' : '') + '">' + esc(via) + '</span>' : '';
+    if (chief) {
+      return '<div class="bubble-row is-chief">'
+        + '<div class="b-main">'
+        + '<div class="bubble b-me">' + esc(msg.text) + '</div>'
+        + '<div class="b-time">' + esc(fmtChatTime(msg.at)) + '</div>'
+        + '</div>'
+        + '<div class="b-ava is-me" aria-hidden="true">예</div>'
+        + '</div>';
+    }
+    return '<div class="bubble-row is-member">'
+      + '<div class="b-ava" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</div>'
+      + '<div class="b-main">'
+      + '<div class="b-who"><span class="b-name">' + esc(memberName(t.memberId)) + '</span>' + src + '</div>'
+      + '<div class="bubble b-ai">' + esc(msg.text) + '</div>'
+      + '<div class="b-time">' + esc(fmtChatTime(msg.at)) + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function renderChatStream() {
+    var box = $('chatStream');
+    if (!box) return;
+    var threads = visibleThreads();
+    var items = [];
+    threads.forEach(function (t) {
+      (t.messages || []).forEach(function (msg) {
+        items.push({ t: t, m: msg, at: new Date(msg.at || t.createdAt).getTime() || 0 });
+      });
+    });
+    if (!items.length) {
+      box.innerHTML = '<div class="chat-empty">'
+        + '<div class="ce-ico" aria-hidden="true">💬</div>'
+        + '<p><b>단톡방이 조용해요.</b><br>아래 입력창에서 담당을 고르고 첫 지시를 보내 보세요.</p>'
+        + '</div>';
+      return;
+    }
+    items.sort(function (a, b) { return a.at - b.at; });
+    var html = [];
+    var lastThread = null;
+    var lastDay = '';
+    items.forEach(function (it) {
+      var when = it.m.at || it.t.createdAt;
+      var day = dayKey(when);
+      if (day !== lastDay) {
+        html.push('<div class="day-divider"><span>' + esc(dayLabel(when)) + '</span></div>');
+        lastDay = day;
+      }
+      if (!lastThread || lastThread.id !== it.t.id) {
+        html.push(ticketBar(it.t));
+        lastThread = it.t;
+      }
+      html.push(bubble(it.t, it.m));
+    });
+    box.innerHTML = html.join('');
+  }
+
+  function scrollChatEnd() {
+    var box = $('chatStream');
+    if (!box) return;
+    var last = box.lastElementChild;
+    if (last && typeof last.scrollIntoView === 'function') {
+      try { last.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (err) { /* 무시 */ }
+    }
+  }
+
   function renderMeeting() {
     renderComposeSelect();
     var list = $('threadList');
@@ -787,26 +1007,25 @@
       hookState.textContent = state.settings.webhookUrl ? ('웹훅 연결됨 · ' + state.settings.webhookKind) : '웹훅 미설정';
     }
     if (!list) return;
-    if (!threads.length) {
-      list.innerHTML = '<div class="empty">아직 지시가 없어요.<br>위에서 담당을 고르고 <b>첫 지시</b>를 보내 보세요.</div>';
-      return;
-    }
-    list.innerHTML = threads.map(function (t) {
+    list.innerHTML = threads.length ? threads.map(function (t) {
       var last = t.messages && t.messages.length ? t.messages[t.messages.length - 1] : null;
       var preview = last ? (last.from === 'chief' ? '대장: ' : memberName(t.memberId) + ': ') + last.text : '내용 없음';
       return ''
         + '<button type="button" class="thread-item" data-thread="' + esc(t.id) + '">'
-        + '  <div class="ti-avatar" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</div>'
-        + '  <div class="ti-body">'
-        + '    <div class="ti-top">'
+        + '  <span class="ti-avatar" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</span>'
+        + '  <span class="ti-body">'
+        + '    <span class="ti-top">'
         + '      <span class="ti-title">' + esc(t.title) + '</span>'
         + '      <span class="tag ' + tagClass(t.status) + '">' + esc(t.status) + '</span>'
-        + '    </div>'
-        + '    <p class="ti-preview">' + esc(preview) + '</p>'
-        + '    <div class="ti-time">' + esc(memberName(t.memberId)) + ' · ' + esc(fmtTime(t.updatedAt || t.createdAt)) + '</div>'
-        + '  </div>'
+        + '    </span>'
+        + '    <span class="ti-preview">' + esc(preview) + '</span>'
+        + '    <span class="ti-time">' + esc(memberName(t.memberId)) + ' · ' + esc(fmtTime(t.updatedAt || t.createdAt)) + '</span>'
+        + '  </span>'
         + '</button>';
-    }).join('');
+    }).join('') : '<span class="rail-empty">아직 티켓이 없어요. 아래 입력창에서 첫 지시를 보내 보세요.</span>';
+    renderChatStream();
+    renderReplyTarget();
+    renderComposeTarget();
   }
 
   /* ---------- 렌더: 업무판 ---------- */
@@ -917,13 +1136,17 @@
 
   function renderAll() {
     renderDemoToggle();
+    renderOfficeMeta();
     renderStats();
+    renderSeatMap();
+    renderWake();
     renderTeam();
     renderMeeting();
     renderBoard();
     renderSyncState();
     if ($('modal-settings') && !$('modal-settings').hidden) renderSettings();
     if ($('modal-guide') && !$('modal-guide').hidden) renderReportFormats();
+    if ($('modal-seat') && !$('modal-seat').hidden) renderSeatSheet();
   }
 
   /* ---------- 모달 ---------- */
@@ -1035,10 +1258,21 @@
     $('threadMessages').innerHTML = (thread.messages || []).map(function (msg) {
       var isChief = msg.from === 'chief';
       var via = viaLabel(msg.via);
-      return ''
-        + '<div class="msg ' + (isChief ? 'msg-chief' : 'msg-member') + '">'
-        + '  <span class="msg-meta">' + esc((isChief ? '대장 김예은' : memberName(thread.memberId)) + ' · ' + fmtTime(msg.at) + (via ? ' · ' + via : '')) + '</span>'
-        + esc(msg.text)
+      if (isChief) {
+        return '<div class="msg msg-chief">'
+          + '  <div class="msg-col">'
+          + '    <div class="msg-bubble">' + esc(msg.text) + '</div>'
+          + '    <span class="msg-meta">' + esc(fmtChatTime(msg.at) + (via ? ' · ' + via : '')) + '</span>'
+          + '  </div>'
+          + '</div>';
+      }
+      return '<div class="msg msg-member">'
+        + '  <span class="msg-ava" style="--ring:' + ringOf(thread.memberId) + '" aria-hidden="true">' + esc(memberEmoji(thread.memberId)) + '</span>'
+        + '  <div class="msg-col">'
+        + '    <span class="msg-who">' + esc(memberName(thread.memberId)) + (via ? ' <span class="src-badge">' + esc(via) + '</span>' : '') + '</span>'
+        + '    <div class="msg-bubble">' + esc(msg.text) + '</div>'
+        + '    <span class="msg-meta">' + esc(fmtChatTime(msg.at)) + '</span>'
+        + '  </div>'
         + '</div>';
     }).join('') || '<div class="empty">아직 대화가 없어요.</div>';
 
@@ -1114,6 +1348,79 @@
     openModal('modal-member');
   }
 
+  /* ---------- 동작: 좌석 카드 · 팀원 부르기 ---------- */
+  function makeTitle(text) {
+    var line = String(text || '').replace(/\s+/g, ' ').trim();
+    if (line.length > 24) line = line.slice(0, 24).trim() + '…';
+    return line || '새 지시';
+  }
+
+  function openSeat(id) {
+    if (!memberById(id)) return;
+    ui.seatId = id;
+    renderSeatSheet();
+    openModal('modal-seat');
+  }
+
+  function renderSeatSheet() {
+    var m = memberById(ui.seatId);
+    var modal = $('modal-seat');
+    if (!m) { if (modal) closeModal(modal); return; }
+    $('seatTitle').textContent = m.name;
+    $('seatMeta').textContent = (m.role || '') + ' · ' + (m.connected ? '연결됨' : '미연결');
+    $('seatEmoji').textContent = m.emoji || '🙂';
+    $('seatEmoji').style.setProperty('--ring', ringOf(m.id));
+    $('seatName').textContent = m.name;
+    $('seatRole').textContent = m.role || '';
+    var badge = $('seatBadge');
+    badge.className = 'badge ' + badgeClass(m.status);
+    badge.innerHTML = '<span class="dot"></span>' + esc(m.status);
+    $('seatDesc').textContent = m.desc || '';
+    var acts;
+    if (m.isChief) {
+      acts = '<button type="button" class="btn btn-primary" data-act="board" data-member="' + esc(m.id) + '">📋 업무판 보기</button>'
+        + '<button type="button" class="btn btn-ghost" data-act="meeting" data-member="' + esc(m.id) + '">💬 대장으로 말하기</button>';
+    } else {
+      acts = '<button type="button" class="btn btn-primary" data-act="meeting" data-member="' + esc(m.id) + '">💬 @' + esc(m.name) + ' 부르기</button>'
+        + '<button type="button" class="btn btn-ghost" data-act="copy" data-member="' + esc(m.id) + '">🔗 연결 문구 복사</button>'
+        + '<button type="button" class="btn btn-ghost" data-act="board" data-member="' + esc(m.id) + '">📋 담당 업무</button>';
+    }
+    $('seatActions').innerHTML = acts;
+  }
+
+  function handleMemberAction(act, id) {
+    var m = memberById(id);
+    var seat = $('modal-seat');
+    if (seat && !seat.hidden) closeModal(seat);
+    if (act === 'board') {
+      ui.ownerFilter = id;
+      ui.statusFilter = '전체';
+      switchView('board');
+      renderBoard();
+      toast(memberName(id) + ' 담당 업무만 보고 있어요.');
+      return;
+    }
+    if (act === 'meeting') {
+      switchView('meeting');
+      var sel = $('composeTo');
+      if (sel) sel.value = id;
+      renderComposeTarget();
+      var body = $('composeBody');
+      if (body && m) body.value = '@' + m.name + ' ';
+      if (body) setTimeout(function () { try { body.focus({ preventScroll: true }); } catch (err) {} }, 140);
+      toast((m ? m.name : '팀원') + '에게 말을 걸어 보세요.');
+      return;
+    }
+    if (act === 'copy') {
+      if (!m) return;
+      var okMessage = m.name + ' 연결 문구를 복사했어요. 그 AI에 붙여넣으세요.';
+      if (markConnectionCopied(m)) {
+        okMessage = m.name + ' 연결 문구를 복사했어요. 상태를 「대기 · 연결됨」으로 바꿨어요 — 이제 그 AI가 단톡방을 읽고 답글을 남길 수 있어요.';
+      }
+      copyText(buildPrompt(m), okMessage);
+    }
+  }
+
   /* ---------- 이벤트 ---------- */
   function bind() {
     // 탭
@@ -1156,51 +1463,143 @@
       toast(state.demoMode ? '데모 모드를 켰어요. 예시 데이터가 보여요.' : '데모 모드를 껐어요. 내가 만든 것만 보여요.');
     });
 
-    // 우리 팀 카드
-    $('teamGrid').addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-act]');
+    // 팀원 부르기·연결 문구 (우리 팀 카드 + 좌석 카드 공용)
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-act][data-member]');
       if (!btn) return;
       var act = btn.getAttribute('data-act');
-      var id = btn.getAttribute('data-member');
-      if (act === 'board') {
-        ui.ownerFilter = id;
-        ui.statusFilter = '전체';
-        switchView('board');
-        renderBoard();
-        toast(memberName(id) + ' 담당 업무만 보고 있어요.');
-      } else if (act === 'meeting') {
-        switchView('meeting');
-        var sel = $('composeTo');
-        if (sel) sel.value = id;
-        var title = $('composeTitle');
-        if (title) setTimeout(function () { title.focus({ preventScroll: true }); }, 120);
-        toast(memberName(id) + '에게 지시를 적어 보세요.');
-      } else if (act === 'copy') {
-        var m = memberById(id);
-        if (!m) return;
-        var okMessage = m.name + ' 연결 문구를 복사했어요. 그 AI에 붙여넣으세요.';
-        if (markConnectionCopied(m)) {
-          okMessage = m.name + ' 연결 문구를 복사했어요. 상태를 「대기 · 연결됨」으로 바꿨어요 — 이제 그 AI가 회의실을 읽고 답글을 남길 수 있어요.';
-        }
-        copyText(buildPrompt(m), okMessage);
-      }
+      if (act !== 'board' && act !== 'meeting' && act !== 'copy') return;
+      handleMemberAction(act, btn.getAttribute('data-member'));
     });
+
+    // 좌석 맵: 팀원 자리 누르기
+    if ($('seatLayer')) {
+      $('seatLayer').addEventListener('click', function (e) {
+        var seat = e.target.closest('[data-seat]');
+        if (seat) openSeat(seat.getAttribute('data-seat'));
+      });
+    }
+
+    // 오피스 바: 좌석 맵 접기/펼치기
+    if ($('officeToggle')) {
+      $('officeToggle').addEventListener('click', function () {
+        ui.officeOpen = !ui.officeOpen;
+        if ($('seatWrap')) $('seatWrap').hidden = !ui.officeOpen;
+        $('officeToggle').setAttribute('aria-expanded', ui.officeOpen ? 'true' : 'false');
+        if ($('officeFold')) $('officeFold').textContent = ui.officeOpen ? '접기' : '펼치기';
+      });
+    }
+
+    // 공지 바: 깨움 범위·팀장
+    function toggleWake() {
+      var mode = state.settings.wakeMode === '지명만' ? '전원' : '지명만';
+      state.settings.wakeMode = mode;
+      save();
+      renderWake();
+      toast(mode === '지명만' ? '지명한 팀원만 답해요. 메시지에 @이름을 적어 주세요.' : '전원이 깨어 있어요. 새 티켓은 담당에게 전달돼요.');
+    }
+    if ($('wakeToggle')) $('wakeToggle').addEventListener('click', toggleWake);
+    if ($('wakeGo')) $('wakeGo').addEventListener('click', toggleWake);
+    if ($('leadChip')) {
+      $('leadChip').addEventListener('click', function () {
+        switchView('office');
+        toast('팀장은 김예은 대장이에요. 모든 결정의 최종 승인자예요.');
+      });
+    }
+
+    // 입력바: 티켓 설정·답장 대상·자동 높이
+    if ($('composeMoreBtn')) {
+      $('composeMoreBtn').addEventListener('click', function () {
+        var box = $('composeExtra');
+        var open = box.hidden;
+        box.hidden = !open;
+        this.setAttribute('aria-expanded', open ? 'true' : 'false');
+        this.textContent = open ? '− 티켓 설정' : '＋ 티켓 설정';
+        if (open && $('composeTitle')) {
+          setTimeout(function () { try { $('composeTitle').focus({ preventScroll: true }); } catch (err) {} }, 60);
+        }
+      });
+    }
+    if ($('composeTo')) $('composeTo').addEventListener('change', renderComposeTarget);
+    if ($('replyTargetClear')) {
+      $('replyTargetClear').addEventListener('click', function () {
+        ui.replyTarget = null;
+        renderReplyTarget();
+        toast('답장 대상을 풀었어요. 다음 메시지는 새 티켓으로 열려요.');
+      });
+    }
+    if ($('composeBody')) {
+      var bodyEl = $('composeBody');
+      bodyEl.addEventListener('input', function () {
+        bodyEl.style.height = 'auto';
+        bodyEl.style.height = Math.min(120, bodyEl.scrollHeight || 0) + 'px';
+      });
+      bodyEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          var form = $('composeForm');
+          if (typeof form.requestSubmit === 'function') form.requestSubmit();
+          else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      });
+    }
+
+    // 단톡방: 말풍선 · 티켓 바
+    if ($('chatStream')) {
+      $('chatStream').addEventListener('click', function (e) {
+        var reply = e.target.closest('[data-reply]');
+        if (reply) {
+          ui.replyTarget = reply.getAttribute('data-reply');
+          renderReplyTarget();
+          if ($('composeBody')) { try { $('composeBody').focus({ preventScroll: true }); } catch (err) {} }
+          toast('이 티켓에 이어서 말해요.');
+          return;
+        }
+        var th = e.target.closest('[data-thread]');
+        if (th) openThread(th.getAttribute('data-thread'));
+      });
+    }
 
     // 회의실: 새 지시
     $('composeForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var memberId = $('composeTo').value;
-      var title = $('composeTitle').value.trim();
       var body = $('composeBody').value.trim();
+      var title = $('composeTitle').value.trim();
       var status = $('composeStatus').value;
       if (!memberId) { toast('담당을 먼저 골라 주세요.'); return; }
-      if (!title) { toast('제목을 적어 주세요.'); return; }
-      createThread(memberId, title, body, status);
+      if (!body && !title) { toast('메시지를 적어 주세요.'); return; }
+      if (!title) title = makeTitle(body);
+
+      var target = null;
+      for (var i = 0; i < state.threads.length; i++) if (state.threads[i].id === ui.replyTarget) target = state.threads[i];
+      var now = new Date().toISOString();
+      if (target) {
+        target.messages = target.messages || [];
+        target.messages.push({ id: uid('m'), from: 'chief', text: body || title, at: now });
+        target.updatedAt = now;
+        if (status !== '대기') target.status = status;
+        save();
+        renderAll();
+        scrollChatEnd();
+        toast(memberName(target.memberId) + '에게 이어서 보냈어요.');
+      } else {
+        createThread(memberId, title, body, status);
+        renderAll();
+        scrollChatEnd();
+        toast(memberName(memberId) + '에게 지시를 보냈어요.');
+      }
       $('composeTitle').value = '';
       $('composeBody').value = '';
       $('composeStatus').value = '대기';
-      renderAll();
-      toast(memberName(memberId) + '에게 지시를 보냈어요.');
+      if ($('composeExtra')) {
+        $('composeExtra').hidden = true;
+        if ($('composeMoreBtn')) {
+          $('composeMoreBtn').textContent = '＋ 티켓 설정';
+          $('composeMoreBtn').setAttribute('aria-expanded', 'false');
+        }
+      }
+      if ($('composeBody')) $('composeBody').style.height = 'auto';
     });
 
     // 회의실: 목록
