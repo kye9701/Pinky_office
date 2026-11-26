@@ -1325,6 +1325,8 @@ code {
   .team-grid { grid-template-columns: repeat(3, 1fr); }
   .kanban { grid-template-columns: repeat(4, 1fr); }
   .bubble { font-size: 13.5px; }
+  .b-main { max-width: min(78%, 560px); }
+  .msg-col { max-width: min(82%, 520px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

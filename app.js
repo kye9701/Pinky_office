@@ -1583,6 +1583,18 @@
       if (!body && !title) { toast('메시지를 적어 주세요.'); return; }
       if (!title) title = makeTitle(body);
 
+      // "@이름"으로 시작하면 그 팀원을 담당으로 바꿉니다.
+      var mention = (body || '').match(/^@([^\s]+)/);
+      if (mention) {
+        var named = null;
+        state.members.forEach(function (m) { if (!m.isChief && m.name === mention[1]) named = m; });
+        if (named) {
+          memberId = named.id;
+          if ($('composeTo')) $('composeTo').value = named.id;
+          renderComposeTarget();
+        }
+      }
+
       var target = null;
       for (var i = 0; i < state.threads.length; i++) if (state.threads[i].id === ui.replyTarget) target = state.threads[i];
       var now = new Date().toISOString();
