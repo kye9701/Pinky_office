@@ -7,6 +7,7 @@
   var STATE_VERSION = 4;
   var TASK_STATUS = ['대기', '작업 중', '검수 대기', '완료'];
   var THREAD_STATUS = ['대기', '작업 중', '완료'];
+  var LEAVE_STATUS = '휴직 중';   // 휴직: 책상 컴퓨터가 꺼지고 💤 표시
 
   /* 기본 팀원이 추가된 버전 — 저장값·실시간 DB에 없으면 그 버전 이하의 목록에 자동으로 채웁니다. */
   var MEMBER_SINCE = { keyring: 3, vooy: 3, manus: 3, muse: 3, hark: 3, instinct: 3, groq: 4 };
@@ -98,6 +99,7 @@
       case '작업 중': return 'badge-doing';
       case '완료': return 'badge-done';
       case '미연결': return 'badge-off';
+      case '휴직 중': return 'badge-leave';
       default: return 'badge-wait';
     }
   }
@@ -178,9 +180,11 @@
 
   /* 예전 팀원 목록에 새 기본 팀원을 채웁니다(버전 2 → 3 → 4 마이그레이션).
      sinceVersion보다 나중에 추가된 팀원만 채워서, 일부러 지운 팀원이 새로고침마다 되살아나지 않게 합니다. */
-  function mergeNewMembers(list, sinceVersion) {
+  function mergeNewMembers(list, sinceVersion, skipIds) {
     var members = Array.isArray(list) ? list.slice() : [];
     var changed = false;
+    var skip = {};
+    (Array.isArray(skipIds) ? skipIds : []).forEach(function (id) { skip[id] = true; });
     // v2의 '큐'는 키링과 역할이 섞여 있었으므로, 손대지 않은 경우에만 새 역할로 바꿉니다.
     members.forEach(function (m) {
       if (m && m.id === 'cue' && m.role === LEGACY_CUE_ROLE) {
@@ -191,7 +195,7 @@
     var present = {};
     members.forEach(function (m) { if (m && m.id) present[m.id] = true; });
     Object.keys(MEMBER_SINCE).forEach(function (id) {
-      if (present[id] || MEMBER_SINCE[id] <= sinceVersion) return;
+      if (present[id] || skip[id] || MEMBER_SINCE[id] <= sinceVersion) return;
       var d = defaultMember(id);
       if (d) { members.push(clone(d)); changed = true; }
     });
@@ -217,6 +221,7 @@
       demoMode: true,
       settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false, wakeMode: '전원' },
       members: defaultMembers(),
+      fired: [],
       tasks: [
         {
           id: uid('t'), title: '카페 오픈 준비 체크리스트', ownerId: 'yeeun', status: '완료',
@@ -311,6 +316,7 @@
           wakeMode: (saved.settings && saved.settings.wakeMode) || '전원'
         },
         members: members,
+        fired: Array.isArray(saved.fired) ? saved.fired : [],
         tasks: tasks,
         threads: Array.isArray(saved.threads) ? saved.threads : base.threads
       };
@@ -402,6 +408,29 @@
       else if (sync.telegram && sync.telegram.tokenSet) tg.textContent = '봇 토큰만 있음 · Chat ID 미감지';
       else tg.textContent = '텔레그램 준비 전';
     }
+    renderDbWarn();
+  }
+
+  /* DB 주소가 없으면 화면 위쪽에 "이 브라우저에만 저장" 경고를 띄웁니다. */
+  function renderDbWarn() {
+    var el = $('dbWarn');
+    if (!el) return;
+    el.hidden = apiConfigured();
+  }
+
+  /* 지금 저장된 DB 주소로 폰에서 바로 열 수 있는 원클릭 링크 */
+  function oneClickLink() {
+    var url = apiUrl();
+    if (!url) return '';
+    var key = (state.settings.apiSecret || '').trim();
+    var base = (window.location.origin || '') + (window.location.pathname || '/');
+    return base + '#api=' + encodeURIComponent(url) + (key ? '&key=' + encodeURIComponent(key) : '');
+  }
+
+  function copyOneClickLink() {
+    var link = oneClickLink();
+    if (!link) { toast('먼저 실시간 DB 주소를 넣고 저장해 주세요.'); return; }
+    copyText(link, '폰에서 열 원클릭 링크를 복사했어요. 폰 브라우저 주소창에 붙여 열면 바로 연결돼요.');
   }
 
   /* 서버 데이터를 화면에 적용. 예시(데모) 항목은 이 브라우저 것을 그대로 둡니다. */
@@ -419,7 +448,7 @@
     }
     if (Array.isArray(data.team) && data.team.length) {
       // 클라우드에 예전 팀원 목록이 남아 있으면 새 기본 팀원을 같이 채용합니다.
-      var team = mergeNewMembers(data.team, teamEra(data.team));
+      var team = mergeNewMembers(data.team, teamEra(data.team), state.fired);
       state.members = team.members;
       teamMerged = team.changed;
     } else if (!state.members.length) {
@@ -586,9 +615,13 @@
     var done = threads.filter(function (t) { return t.status === '완료'; }).length;
     var waiting = tasks.filter(function (t) { return t.status === '대기'; }).length
       + threads.filter(function (t) { return t.status === '대기'; }).length;
-    var offline = state.members.filter(function (m) { return !m.connected && !m.isChief; }).length;
-    return { working: working, done: done, waiting: waiting, offline: offline };
+    var offline = state.members.filter(function (m) { return !m.connected && !m.isChief && m.status !== LEAVE_STATUS; }).length;
+    var leave = state.members.filter(function (m) { return m.status === LEAVE_STATUS; }).length;
+    return { working: working, done: done, waiting: waiting, offline: offline, leave: leave };
   }
+
+  function onLeave(m) { return !!m && m.status === LEAVE_STATUS; }
+  function onLeaveId(id) { return onLeave(memberById(id)); }
 
   /* ---------- 토스트 ---------- */
   var toastTimer = null;
@@ -781,34 +814,18 @@
     var el = $('officeStats');
     if (!el) return;
     var s = calcStats();
-    el.innerHTML = [
+    var parts = [
       '작업 중 <b>' + s.working + '</b>',
       '답변 완료 <b>' + s.done + '</b>',
       '대기 <b>' + s.waiting + '</b>',
       '미연결 <b>' + s.offline + '</b>'
-    ].join('<span class="sep">·</span>');
+    ];
+    if (s.leave) parts.push('휴직 <b>' + s.leave + '</b>');
+    el.innerHTML = parts.join('<span class="sep">·</span>');
   }
 
-  /* ---------- 렌더: 오피스 좌석 맵 ---------- */
-  /* 좌석 좌표는 office 이미지(1672×941) 안의 책상·소파·러그 위치를 %로 적은 것 */
-  var SEATS = {
-    yeeun:    { x: 63, y: 62 },
-    pinky:    { x: 45, y: 70 },
-    gpt:      { x: 27, y: 33 },
-    claude:   { x: 27, y: 55 },
-    gemini:   { x: 46, y: 30 },
-    cue:      { x: 46, y: 50 },
-    keyring:  { x: 66, y: 38 },
-    vooy:     { x: 84, y: 44 },
-    manus:    { x: 88, y: 66 },
-    muse:     { x: 11, y: 50 },
-    hark:     { x: 20, y: 75 },
-    instinct: { x: 37, y: 90 },
-    groq:     { x: 78, y: 30 }
-  };
-  var SPARE_SEATS = [
-    { x: 14, y: 62 }, { x: 58, y: 80 }, { x: 90, y: 30 }, { x: 8, y: 26 }, { x: 55, y: 62 }, { x: 78, y: 86 }
-  ];
+  /* ---------- 렌더: 픽셀 오피스 책상 ---------- */
+  /* 팀원마다 책상·모니터·키보드·의자·이름표. 대장은 방 가운데 앞쪽(관리자 자리)에 따로 앉습니다. */
   var RINGS = ['#ff7a9c', '#ffb26b', '#7ee0c0', '#8fb8ff', '#c79bff', '#ffd166', '#6ee7d7', '#ff9bd2', '#9be15d', '#f2a2ff', '#7dd3fc', '#ffc0a6', '#b0f0c0'];
 
   function ringOf(id) {
@@ -818,7 +835,7 @@
   }
 
   function renderOfficeMeta() {
-    var working = state.members.filter(function (m) { return m.status !== '미연결'; }).length;
+    var working = state.members.filter(function (m) { return m.status !== '미연결' && !onLeave(m); }).length;
     if ($('officeCount')) $('officeCount').textContent = String(working);
     var latest = visibleThreads()[0];
     var live = latest
@@ -828,26 +845,52 @@
     if ($('liveNote')) $('liveNote').textContent = live;
   }
 
+  /* 책상 상태: 작업 중(초록불·화면 반짝) · 대기(화면 켜짐) · 미연결(회색) · 휴직(꺼짐) · 대장 */
+  function deskClass(m) {
+    var c = 'desk-seat';
+    if (m.isChief) c += ' is-chief';
+    if (m.id === 'pinky') c += ' is-pinky';
+    if (onLeave(m)) c += ' is-away';
+    else if (m.status === '미연결') c += ' is-off';
+    else if (m.status === '작업 중') c += ' is-working';
+    else c += ' is-on';
+    return c;
+  }
+
+  function deskStateText(m) {
+    return onLeave(m) ? '💤 휴직' : m.status;
+  }
+
+  function deskHtml(m, extraClass) {
+    return '<button type="button" class="' + deskClass(m) + (extraClass ? ' ' + extraClass : '') + '" data-seat="' + esc(m.id) + '"'
+      + ' style="--ring:' + ringOf(m.id) + '"'
+      + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + m.status) + '">'
+      + '<span class="ds-name">' + (m.isChief ? '👑 ' : '') + esc(m.name) + '</span>'
+      + '<span class="ds-scene" aria-hidden="true">'
+      + '<span class="ds-chair"></span>'
+      + '<span class="ds-avatar">' + esc(m.emoji || '🙂') + '</span>'
+      + '<span class="ds-stand"></span>'
+      + '<span class="ds-monitor"><span class="ds-screen"></span><span class="ds-led"></span></span>'
+      + '<span class="ds-desk"><span class="ds-keyboard"></span><span class="ds-mug"></span></span>'
+      + '</span>'
+      + '<span class="ds-state">' + esc(deskStateText(m)) + '</span>'
+      + '</button>';
+  }
+
   function renderSeatMap() {
     var layer = $('seatLayer');
     if (!layer) return;
-    var spare = 0;
-    layer.innerHTML = state.members.map(function (m) {
-      var spot = SEATS[m.id];
-      if (!spot) { spot = SPARE_SEATS[spare % SPARE_SEATS.length]; spare++; }
-      var cls = 'seat';
-      if (m.isChief) cls += ' is-chief';
-      if (m.id === 'pinky') cls += ' is-pinky';
-      if (m.status === '미연결') cls += ' is-off';
-      if (m.status === '작업 중') cls += ' is-working';
-      return '<button type="button" class="' + cls + '" data-seat="' + esc(m.id) + '"'
-        + ' style="--x:' + spot.x + '%;--y:' + spot.y + '%;--ring:' + ringOf(m.id) + '"'
-        + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + m.status) + '">'
-        + '<span class="seat-dot" aria-hidden="true"></span>'
-        + '<span class="seat-ava" aria-hidden="true">' + esc(m.emoji || '🙂') + '</span>'
-        + '<span class="seat-name">' + esc(m.name) + '</span>'
-        + '</button>';
-    }).join('');
+    var chief = null;
+    var team = [];
+    state.members.forEach(function (m) {
+      if (m.isChief && !chief) chief = m;
+      else team.push(m);
+    });
+    var html = '';
+    if (chief) html += '<div class="boss-row">' + deskHtml(chief, 'is-boss') + '</div>';
+    html += team.map(function (m) { return deskHtml(m); }).join('');
+    layer.innerHTML = html;
+    layer.setAttribute('data-seats', String(state.members.length));
   }
 
   function renderWake() {
@@ -868,16 +911,24 @@
       var cls = 'team-card';
       if (isChief) cls += ' is-chief';
       if (m.id === 'pinky') cls += ' is-pinky';
+      if (onLeave(m)) cls += ' is-away';
+      var id = esc(m.id);
       var actions;
       if (isChief) {
         actions = ''
-          + '<button type="button" class="btn btn-primary" data-act="board" data-member="' + esc(m.id) + '">📋 업무판 보기</button>'
-          + '<button type="button" class="btn btn-ghost" data-act="meeting" data-member="' + esc(m.id) + '">💬 회의실</button>';
+          + '<button type="button" class="btn btn-primary" data-act="board" data-member="' + id + '">📋 업무판 보기</button>'
+          + '<button type="button" class="btn btn-ghost" data-act="meeting" data-member="' + id + '">💬 회의실</button>';
       } else {
         actions = ''
-          + '<button type="button" class="btn btn-primary" data-act="meeting" data-member="' + esc(m.id) + '">💬 회의실에서 부르기</button>'
-          + '<button type="button" class="btn btn-ghost" data-act="copy" data-member="' + esc(m.id) + '">🔗 연결 문구</button>';
+          + '<button type="button" class="btn btn-primary" data-act="meeting" data-member="' + id + '">💬 회의실에서 부르기</button>'
+          + '<button type="button" class="btn btn-ghost" data-act="copy" data-member="' + id + '">🔗 연결 문구</button>';
       }
+      var manage = isChief ? '' : '<div class="tc-actions tc-actions-sub">'
+        + (onLeave(m)
+          ? '<button type="button" class="btn btn-ghost btn-sm" data-act="resume" data-member="' + id + '">▶️ 복직</button>'
+          : '<button type="button" class="btn btn-ghost btn-sm" data-act="leave" data-member="' + id + '">⏸️ 휴직</button>')
+        + '<button type="button" class="btn btn-danger btn-sm" data-act="fire" data-member="' + id + '">🚪 해고</button>'
+        + '</div>';
       return ''
         + '<article class="' + cls + '">'
         + '  <div class="tc-head">'
@@ -890,6 +941,7 @@
         + '  <span class="badge ' + badgeClass(m.status) + '"><span class="dot"></span>' + esc(m.status) + '</span>'
         + '  <p class="tc-desc">' + esc(m.desc || '') + '</p>'
         + '  <div class="tc-actions">' + actions + '</div>'
+        + manage
         + '</article>';
     }).join('');
   }
@@ -900,7 +952,8 @@
     if (!sel) return;
     var current = sel.value;
     sel.innerHTML = state.members.filter(function (m) { return !m.isChief; }).map(function (m) {
-      return '<option value="' + esc(m.id) + '">' + esc(m.emoji + ' ' + m.name + ' · ' + m.status) + '</option>';
+      var leave = onLeave(m);
+      return '<option value="' + esc(m.id) + '">' + esc((leave ? '💤 ' : '') + m.emoji + ' ' + m.name + ' · ' + m.status) + '</option>';
     }).join('');
     if (current && memberById(current) && !memberById(current).isChief) sel.value = current;
   }
@@ -910,7 +963,9 @@
     var el = $('composeTarget');
     if (!sel || !el) return;
     var m = memberById(sel.value);
-    el.textContent = m ? (m.emoji + ' ' + m.name + '에게 전달') : '전원에게 전달';
+    el.textContent = m
+      ? (m.emoji + ' ' + m.name + (onLeave(m) ? ' · 💤 휴직 중' : '') + '에게 전달')
+      : '전원에게 전달';
   }
 
   function renderReplyTarget() {
@@ -953,10 +1008,11 @@
         + '<div class="b-ava is-me" aria-hidden="true">예</div>'
         + '</div>';
     }
+    var leaveChip = onLeaveId(t.memberId) ? ' <span class="leave-chip">💤 휴직</span>' : '';
     return '<div class="bubble-row is-member">'
-      + '<div class="b-ava" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</div>'
+      + '<div class="b-ava' + (onLeaveId(t.memberId) ? ' is-away' : '') + '" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</div>'
       + '<div class="b-main">'
-      + '<div class="b-who"><span class="b-name">' + esc(memberName(t.memberId)) + '</span>' + src + '</div>'
+      + '<div class="b-who"><span class="b-name">' + esc(memberName(t.memberId)) + '</span>' + leaveChip + src + '</div>'
       + '<div class="bubble b-ai">' + esc(msg.text) + '</div>'
       + '<div class="b-time">' + esc(fmtChatTime(msg.at)) + '</div>'
       + '</div>'
@@ -1032,7 +1088,7 @@
         + '      <span class="tag ' + tagClass(t.status) + '">' + esc(t.status) + '</span>'
         + '    </span>'
         + '    <span class="ti-preview">' + esc(preview) + '</span>'
-        + '    <span class="ti-time">' + esc(memberName(t.memberId)) + ' · ' + esc(fmtTime(t.updatedAt || t.createdAt)) + '</span>'
+        + '    <span class="ti-time">' + esc(memberName(t.memberId)) + (onLeaveId(t.memberId) ? ' · 💤 휴직' : '') + ' · ' + esc(fmtTime(t.updatedAt || t.createdAt)) + '</span>'
         + '  </span>'
         + '</button>';
     }).join('') : '<span class="rail-empty">아직 티켓이 없어요. 아래 입력창에서 첫 지시를 보내 보세요.</span>';
@@ -1223,6 +1279,7 @@
   /* ---------- 동작: 회의실 ---------- */
   function createThread(memberId, title, body, status) {
     var now = new Date().toISOString();
+    var target = memberById(memberId);
     var thread = {
       id: uid('th'),
       memberId: memberId,
@@ -1267,6 +1324,7 @@
     if (!thread) return;
     $('threadTitle').textContent = thread.title;
     $('threadMeta').textContent = memberEmoji(thread.memberId) + ' ' + memberName(thread.memberId)
+      + (onLeaveId(thread.memberId) ? ' · 💤 휴직 중' : '')
       + ' · ' + fmtFull(thread.createdAt) + ' 시작';
 
     Array.prototype.forEach.call($('threadStatusSwitch').querySelectorAll('button'), function (btn) {
@@ -1385,7 +1443,9 @@
     var modal = $('modal-seat');
     if (!m) { if (modal) closeModal(modal); return; }
     $('seatTitle').textContent = m.name + ' 팀원 카드';
-    $('seatMeta').textContent = m.connected ? '연결됨 · 단톡방에서 바로 답해요' : '미연결 · 연결 문구를 복사해 초대하세요';
+    $('seatMeta').textContent = onLeave(m)
+      ? '휴직 중 · 복직을 누를 때까지 단톡방 답변을 받지 않아요'
+      : (m.connected ? '연결됨 · 단톡방에서 바로 답해요' : '미연결 · 연결 문구를 복사해 초대하세요');
     $('seatEmoji').textContent = m.emoji || '🙂';
     $('seatEmoji').style.setProperty('--ring', ringOf(m.id));
     $('seatName').textContent = m.name;
@@ -1401,7 +1461,11 @@
     } else {
       acts = '<button type="button" class="btn btn-primary" data-act="meeting" data-member="' + esc(m.id) + '">💬 @' + esc(m.name) + ' 부르기</button>'
         + '<button type="button" class="btn btn-ghost" data-act="copy" data-member="' + esc(m.id) + '">🔗 연결 문구 복사</button>'
-        + '<button type="button" class="btn btn-ghost" data-act="board" data-member="' + esc(m.id) + '">📋 담당 업무</button>';
+        + '<button type="button" class="btn btn-ghost" data-act="board" data-member="' + esc(m.id) + '">📋 담당 업무</button>'
+        + (onLeave(m)
+          ? '<button type="button" class="btn btn-return" data-act="resume" data-member="' + esc(m.id) + '">▶️ 복직</button>'
+          : '<button type="button" class="btn btn-leave" data-act="leave" data-member="' + esc(m.id) + '">⏸️ 휴직</button>')
+        + '<button type="button" class="btn btn-danger" data-act="fire" data-member="' + esc(m.id) + '">🚪 해고</button>';
     }
     $('seatActions').innerHTML = acts;
   }
@@ -1409,6 +1473,14 @@
   function handleMemberAction(act, id) {
     var m = memberById(id);
     var seat = $('modal-seat');
+    if (act === 'leave' || act === 'resume') {
+      setMemberLeave(id, act === 'leave');
+      return;
+    }
+    if (act === 'fire') {
+      fireMember(id);
+      return;
+    }
     if (seat && !seat.hidden) closeModal(seat);
     if (act === 'board') {
       ui.ownerFilter = id;
@@ -1443,6 +1515,41 @@
       }
       copyText(buildPrompt(m), okMessage);
     }
+  }
+
+  /* ---------- 동작: 휴직 · 복직 · 해고 ---------- */
+  function setMemberLeave(id, leave) {
+    var m = memberById(id);
+    if (!m || m.isChief) return;
+    m.status = leave ? LEAVE_STATUS : '대기';
+    save();
+    renderAll();
+    renderMeeting();
+    toast(leave
+      ? m.name + '을(를) 휴직 처리했어요. 책상 컴퓨터를 껐어요 💤'
+      : m.name + '이(가) 복직했어요. 제자리로 돌아왔어요 ▶️');
+  }
+
+  function removeMember(id) {
+    var m = memberById(id);
+    if (!m || m.isChief) return false;
+    state.members = state.members.filter(function (x) { return x.id !== id; });
+    if (!Array.isArray(state.fired)) state.fired = [];
+    if (state.fired.indexOf(id) === -1) state.fired.push(id);
+    if (ui.seatId === id) ui.seatId = null;
+    if (ui.ownerFilter === id) ui.ownerFilter = null;
+    save();
+    renderAll();
+    return true;
+  }
+
+  function fireMember(id) {
+    var m = memberById(id);
+    if (!m || m.isChief) return;
+    if (!window.confirm('「' + m.name + '」 팀원을 해고할까요?\n오피스 자리와 팀 목록에서 빠져요. 업무·지시 기록은 그대로 남아요.')) return;
+    var seat = $('modal-seat');
+    if (seat && !seat.hidden) closeModal(seat);
+    if (removeMember(id)) toast(m.name + ' 팀원을 해고했어요. 책상이 비었어요 🚪');
   }
 
   /* ---------- 이벤트 ---------- */
@@ -1492,7 +1599,7 @@
       var btn = e.target.closest('[data-act][data-member]');
       if (!btn) return;
       var act = btn.getAttribute('data-act');
-      if (act !== 'board' && act !== 'meeting' && act !== 'copy') return;
+      if (act !== 'board' && act !== 'meeting' && act !== 'copy' && act !== 'leave' && act !== 'resume' && act !== 'fire') return;
       handleMemberAction(act, btn.getAttribute('data-member'));
     });
 
@@ -1619,11 +1726,13 @@
         renderAll();
         scrollChatEnd();
         toast(memberName(target.memberId) + '에게 이어서 보냈어요.');
+        if (onLeaveId(target.memberId)) toast(memberName(target.memberId) + '은(는) 지금 휴직 중이에요. 복직하면 그때 답할 수 있어요 💤');
       } else {
-        createThread(memberId, title, body, status);
+        var created = createThread(memberId, title, body, status);
         renderAll();
         scrollChatEnd();
         toast(memberName(memberId) + '에게 지시를 보냈어요.');
+        if (onLeaveId(memberId)) toast(memberName(memberId) + '은(는) 지금 휴직 중이에요. 복직하면 그때 답할 수 있어요 💤');
       }
       $('composeTitle').value = '';
       $('composeBody').value = '';
@@ -1763,10 +1872,7 @@
         var m = memberById(id);
         if (!m || m.isChief) return;
         if (!window.confirm('「' + m.name + '」 팀원을 목록에서 지울까요? 업무·지시의 담당은 그대로 남아요.')) return;
-        state.members = state.members.filter(function (x) { return x.id !== id; });
-        save();
-        renderSettings();
-        renderAll();
+        removeMember(id);
         toast(m.name + ' 팀원을 지웠어요.');
       }
     });
@@ -1847,6 +1953,18 @@
     $('testApiBtn').addEventListener('click', function () { testApi(); });
     $('connectTelegramBtn').addEventListener('click', function () { connectTelegram(); });
     $('testTelegramBtn').addEventListener('click', function () { testTelegram(); });
+    if ($('copyLinkBtn')) $('copyLinkBtn').addEventListener('click', function () { copyOneClickLink(); });
+
+    // DB 미연결 경고 배너
+    if ($('dbWarnSettings')) {
+      $('dbWarnSettings').addEventListener('click', function () {
+        openModal('modal-settings');
+        setTimeout(function () { if ($('apiUrl')) { try { $('apiUrl').focus({ preventScroll: true }); } catch (err) {} } }, 80);
+      });
+    }
+    if ($('dbWarnGuide')) {
+      $('dbWarnGuide').addEventListener('click', function () { openModal('modal-guide'); });
+    }
 
     // 설정: 데이터
     $('resetDemoBtn').addEventListener('click', function () {

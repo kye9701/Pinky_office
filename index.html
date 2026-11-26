@@ -37,6 +37,19 @@
     </div>
   </header>
 
+  <!-- ================= DB 미연결 경고 ================= -->
+  <div class="db-warn" id="dbWarn" role="alert" hidden>
+    <span class="dw-ico" aria-hidden="true">⚠️</span>
+    <div class="dw-body">
+      <b class="dw-title">지금 「이 브라우저에만 저장」 상태예요!</b>
+      <p class="dw-text">원클릭 링크(<code>#api=…</code>)로 열거나 <b>⚙️ 설정</b>에서 DB 주소를 넣어야 AI·텔레그램과 연결돼요. 이 상태에서는 AI가 단톡방을 읽지 못해 답도 못 해요.</p>
+    </div>
+    <div class="dw-actions">
+      <button type="button" class="dw-btn" id="dbWarnSettings">⚙️ 설정 열기</button>
+      <button type="button" class="dw-btn dw-btn-ghost" id="dbWarnGuide">📚 연결 방법</button>
+    </div>
+  </div>
+
   <!-- ================= 오피스 좌석 맵 ================= -->
   <section class="office-dock" aria-label="오피스 좌석 맵">
     <div class="office-bar">
@@ -44,18 +57,23 @@
         <span class="ob-ico" aria-hidden="true">🏠</span>
         <span class="ob-text">오피스 · <b id="officeCount">5</b>명 근무 중</span>
         <span class="ob-live" id="officeLive">핑키 활동 중</span>
-        <span class="ob-ver" id="officeVersion">v2026.11.26</span>
+        <span class="ob-ver" id="officeVersion">v2026.11.27</span>
         <span class="ob-fold" id="officeFold">접기</span>
       </button>
     </div>
 
     <div class="seat-wrap" id="seatWrap">
-      <div class="banner seat-map">
-        <picture>
-          <source srcset="./office.webp" type="image/webp" />
-          <img src="./office.png" width="1324" height="860" fetchpriority="high" alt="핑크빛 3D 아이소메트릭 오피스 — 책상 세 개, 소파, 러그, 책장, 화분이 있는 아늑한 스튜디오" />
-        </picture>
-        <div id="seatLayer" class="seat-layer"></div>
+      <div class="pixel-room" id="pixelOffice" aria-label="픽셀 오피스 — 팀원마다 책상과 컴퓨터가 있는 방">
+        <div class="room-wall" aria-hidden="true">
+          <span class="rw-window"><span class="rw-sun"></span><span class="rw-cloud"></span></span>
+          <span class="rw-sign">픽셀 오피스</span>
+          <span class="rw-clock"></span>
+        </div>
+        <div class="room-floor">
+          <span class="room-prop prop-plant" aria-hidden="true"></span>
+          <span class="room-prop prop-cooler" aria-hidden="true"></span>
+          <div id="seatLayer" class="seat-layer"></div>
+        </div>
       </div>
       <div class="stats-line">
         <span class="stats-label">오늘의 오피스</span>
@@ -292,6 +310,16 @@
 
       <div class="admin-row">
         <div>
+          <b>📱 폰에서 한 번에 열기</b>
+          <p class="muted small">지금 저장된 DB 주소로 여는 <b>원클릭 링크</b>를 복사해요. 폰 브라우저에 붙여 열면 설정 없이 바로 연결돼요.</p>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="mini-btn" id="copyLinkBtn">링크 복사</button>
+        </div>
+      </div>
+
+      <div class="admin-row">
+        <div>
           <b>텔레그램 봇 연결</b>
           <p class="muted small">봇(<code>@Pinky_office_bot</code>)에게 <code>/start</code>를 보낸 뒤 누르면 Chat ID를 자동으로 찾아 알림을 걸어 둡니다.</p>
           <p class="muted small" id="telegramState">텔레그램 준비 전</p>
@@ -384,6 +412,7 @@
             <option value="작업 중">작업 중</option>
             <option value="완료">완료</option>
             <option value="미연결">미연결</option>
+            <option value="휴직 중">휴직 중</option>
             <option value="대장">대장</option>
           </select>
         </label>
