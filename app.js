@@ -4,12 +4,12 @@
   'use strict';
 
   var KEY = 'pinky-office-v1';
-  var STATE_VERSION = 3;
+  var STATE_VERSION = 4;
   var TASK_STATUS = ['대기', '작업 중', '검수 대기', '완료'];
   var THREAD_STATUS = ['대기', '작업 중', '완료'];
 
-  /* v3에서 새로 들어온 기본 팀원 — 예전 저장값·실시간 DB에 없으면 자동으로 채웁니다. */
-  var NEW_MEMBER_IDS = ['keyring', 'vooy', 'manus', 'muse', 'hark', 'instinct'];
+  /* 기본 팀원이 추가된 버전 — 저장값·실시간 DB에 없으면 그 버전 이하의 목록에 자동으로 채웁니다. */
+  var MEMBER_SINCE = { keyring: 3, vooy: 3, manus: 3, muse: 3, hark: 3, instinct: 3, groq: 4 };
   var LEGACY_CUE_ROLE = '키링 · 정리 · 기록';   // v2에서는 큐가 키링과 뒤섞여 있었음
 
   /* ---------- 유틸 ---------- */
@@ -69,7 +69,7 @@
   }
 
   /* ---------- 기본 데이터 ---------- */
-  /* 기본 팀원 — 대장·총괄 팀장과 지금 쓰는 AI들 (v3: 키링·Cue·부이·마누스·뮤즈·하크·인스팅트 추가) */
+  /* 기본 팀원 — 대장·총괄 팀장과 지금 쓰는 AI들 (v3: 키링·Cue·부이·마누스·뮤즈·하크·인스팅트, v4: 그록) */
   function defaultMembers() {
     return [
       {
@@ -119,6 +119,10 @@
       {
         id: 'instinct', name: '인스팅트', emoji: '💬', role: '문자 심부름 · 자체 폰 (Instinct)',
         status: '미연결', desc: '문자나 전화로 부리면 자체 폰·컴퓨터로 예약·구매·이메일을 끝까지 처리합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'groq', name: '그록', emoji: '⚡', role: '초고속 추론 · 요약·코드 보조 (Groq)',
+        status: '미연결', desc: 'LPU로 답이 바로 나오는 초고속 모델. 긴 문서 요약과 코드 점검을 빠르게 돌립니다.', connected: false, isChief: false, demo: true
       }
     ];
   }
@@ -129,9 +133,9 @@
     return null;
   }
 
-  /* 예전 팀원 목록에 새 기본 팀원을 채웁니다(버전 2 → 3 마이그레이션).
-     새 팀원이 하나도 없는 목록일 때만 채워서, 일부러 지운 팀원이 새로고침마다 되살아나지 않게 합니다. */
-  function mergeNewMembers(list) {
+  /* 예전 팀원 목록에 새 기본 팀원을 채웁니다(버전 2 → 3 → 4 마이그레이션).
+     sinceVersion보다 나중에 추가된 팀원만 채워서, 일부러 지운 팀원이 새로고침마다 되살아나지 않게 합니다. */
+  function mergeNewMembers(list, sinceVersion) {
     var members = Array.isArray(list) ? list.slice() : [];
     var changed = false;
     // v2의 '큐'는 키링과 역할이 섞여 있었으므로, 손대지 않은 경우에만 새 역할로 바꿉니다.
@@ -143,13 +147,23 @@
     });
     var present = {};
     members.forEach(function (m) { if (m && m.id) present[m.id] = true; });
-    var missing = NEW_MEMBER_IDS.filter(function (id) { return !present[id]; });
-    if (missing.length !== NEW_MEMBER_IDS.length) return { members: members, changed: changed };
-    missing.forEach(function (id) {
+    Object.keys(MEMBER_SINCE).forEach(function (id) {
+      if (present[id] || MEMBER_SINCE[id] <= sinceVersion) return;
       var d = defaultMember(id);
       if (d) { members.push(clone(d)); changed = true; }
     });
     return { members: members, changed: changed };
+  }
+
+  /* 클라우드 팀 목록은 버전을 저장하지 않으므로, 누가 들어 있는지로 어느 버전에서 저장된 목록인지 짐작합니다. */
+  function teamEra(list) {
+    var present = {};
+    (Array.isArray(list) ? list : []).forEach(function (m) { if (m && m.id) present[m.id] = true; });
+    var era = 2;
+    Object.keys(MEMBER_SINCE).forEach(function (id) {
+      if (present[id] && MEMBER_SINCE[id] > era) era = MEMBER_SINCE[id];
+    });
+    return era;
   }
 
   function seedState() {
@@ -240,8 +254,8 @@
       var tasks = Array.isArray(saved.tasks) ? saved.tasks : base.tasks;
       if (savedVersion < STATE_VERSION) tasks = refreshDemoTasks(tasks, base.tasks);
       var members = Array.isArray(saved.members) && saved.members.length ? saved.members : base.members;
-      // 버전 2 → 3: 예전에 저장된 팀원 목록에 새 기본 팀원을 채워 넣습니다.
-      if (savedVersion < STATE_VERSION) members = mergeNewMembers(members).members;
+      // 버전 2 → 3 → 4: 예전에 저장된 팀원 목록에 새 기본 팀원을 채워 넣습니다.
+      if (savedVersion < STATE_VERSION) members = mergeNewMembers(members, savedVersion).members;
       var next = {
         version: STATE_VERSION,
         demoMode: saved.demoMode !== false,
@@ -361,7 +375,7 @@
     }
     if (Array.isArray(data.team) && data.team.length) {
       // 클라우드에 예전 팀원 목록이 남아 있으면 새 기본 팀원을 같이 채용합니다.
-      var team = mergeNewMembers(data.team);
+      var team = mergeNewMembers(data.team, teamEra(data.team));
       state.members = team.members;
       teamMerged = team.changed;
     } else if (!state.members.length) {
@@ -586,7 +600,8 @@
     manus: '오래 걸리는 일은 단계 목록을 먼저 보여 주고, 끝나면 결과물 파일 이름과 확인 방법을 함께 보고한다.',
     muse: '메일·일정·예산을 읽을 때는 필요한 범위만 보고, 보내기·구매·예약은 승인받은 것만 실행한다.',
     hark: '예약·구매·결제는 실행 전에 무엇을 얼마에 할지 먼저 보여 주고, 놓치기 쉬운 일은 한 번 더 알려 준다.',
-    instinct: '문자로 받은 심부름은 자기 폰·컴퓨터로 끝까지 처리하되, 예약·구매 확정 전에는 반드시 확인을 받는다.'
+    instinct: '문자로 받은 심부름은 자기 폰·컴퓨터로 끝까지 처리하되, 예약·구매 확정 전에는 반드시 확인을 받는다.',
+    groq: '빠른 답을 믿고 바로 넘기지 말고, 요약은 원문 구조를 지키고 코드는 실행 조건과 확인 방법을 함께 적는다. 중요한 숫자·일정은 근거 링크로 한 번 더 확인한다.'
   };
 
   function buildPrompt(m) {
