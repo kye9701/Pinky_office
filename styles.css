@@ -346,7 +346,7 @@ body {
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2px 2px;
+  gap: 6px 2px;
 }
 
 /* 대장 자리: 방 앞쪽 가운데 */
@@ -354,7 +354,7 @@ body {
   grid-column: 1 / -1;
   display: flex;
   justify-content: center;
-  padding: 1px 0 3px;
+  padding: 1px 0 5px;
 }
 .boss-row .desk-seat {
   width: 40%;
@@ -622,7 +622,7 @@ body {
   margin-top: 0.5em;
   padding: 0.05em 0.4em;
   border-radius: 2px;
-  background: rgba(58, 32, 12, 0.3);
+  background: rgba(58, 32, 12, 0.24);
   font-size: 8px;
   font-weight: 800;
   letter-spacing: -0.2px;
@@ -1733,7 +1733,7 @@ code {
 
 @media (min-width: 760px) {
   .app { padding: 0 18px calc(160px + env(safe-area-inset-bottom)); }
-  .seat-layer { grid-template-columns: repeat(6, 1fr); gap: 3px 4px; }
+  .seat-layer { grid-template-columns: repeat(6, 1fr); gap: 8px 4px; }
   .desk-seat { font-size: 11px; }
   .ds-name { font-size: 10.5px; padding: 1px 6px; }
   .ds-state { font-size: 9px; }
