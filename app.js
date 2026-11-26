@@ -1419,8 +1419,14 @@
       var sel = $('composeTo');
       if (sel) sel.value = id;
       renderComposeTarget();
+      ui.replyTarget = null;
+      renderReplyTarget();
       var body = $('composeBody');
-      if (body && m) body.value = '@' + m.name + ' ';
+      if (body && m) {
+        var mention = '@' + m.name + ' ';
+        if (!body.value.trim()) body.value = mention;
+        else if (body.value.indexOf('@' + m.name) !== 0) body.value = mention + body.value;
+      }
       if (body) setTimeout(function () { try { body.focus({ preventScroll: true }); } catch (err) {} }, 140);
       toast((m ? m.name : '팀원') + '에게 말을 걸어 보세요.');
       return;
