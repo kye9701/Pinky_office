@@ -47,8 +47,14 @@
 
 ## 배포
 
-정적 파일만 있으므로 Cloudflare Pages에 그대로 올리면 됩니다.
+GitHub Pages에서 `main` 브랜치 루트(`/`)를 그대로 게시합니다(빌드 없음).
+
+- 라이브: <https://kye9701.github.io/Pinky_office/>
+- 저장소: <https://github.com/kye9701/Pinky_office>
+- 수정 후 `main`에 푸시하면 1분 안에 자동 반영됩니다.
 
 ```bash
-npx wrangler pages deploy . --project-name=pinky-office
+git add -A && git commit -m "내용 수정" && git push
 ```
+
+정적 파일만 있으므로 Cloudflare Pages 등 다른 정적 호스팅에 그대로 올려도 됩니다.
