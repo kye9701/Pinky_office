@@ -801,10 +801,10 @@
     keyring:  { x: 66, y: 38 },
     vooy:     { x: 84, y: 44 },
     manus:    { x: 88, y: 66 },
-    muse:     { x: 8,  y: 46 },
+    muse:     { x: 11, y: 50 },
     hark:     { x: 20, y: 75 },
     instinct: { x: 37, y: 90 },
-    groq:     { x: 82, y: 24 }
+    groq:     { x: 78, y: 30 }
   };
   var SPARE_SEATS = [
     { x: 14, y: 62 }, { x: 58, y: 80 }, { x: 90, y: 30 }, { x: 8, y: 26 }, { x: 55, y: 62 }, { x: 78, y: 86 }
