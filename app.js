@@ -763,7 +763,9 @@
     if (name === 'board') renderBoard();
     var tabsEl = document.querySelector('.tabs');
     if (tabsEl && typeof tabsEl.getBoundingClientRect === 'function') {
-      var top = tabsEl.getBoundingClientRect().top + (window.scrollY || 0) - 62;
+      var headerEl = document.querySelector('.top');
+      var headerH = headerEl ? (headerEl.getBoundingClientRect().height || 0) : 0;
+      var top = tabsEl.getBoundingClientRect().top + (window.scrollY || 0) - headerH - 8;
       window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     } else {
       window.scrollTo({ top: 0 });
