@@ -4,9 +4,13 @@
   'use strict';
 
   var KEY = 'pinky-office-v1';
-  var STATE_VERSION = 2;
+  var STATE_VERSION = 3;
   var TASK_STATUS = ['대기', '작업 중', '검수 대기', '완료'];
   var THREAD_STATUS = ['대기', '작업 중', '완료'];
+
+  /* v3에서 새로 들어온 기본 팀원 — 예전 저장값·실시간 DB에 없으면 자동으로 채웁니다. */
+  var NEW_MEMBER_IDS = ['keyring', 'vooy', 'manus', 'muse', 'hark', 'instinct'];
+  var LEGACY_CUE_ROLE = '키링 · 정리 · 기록';   // v2에서는 큐가 키링과 뒤섞여 있었음
 
   /* ---------- 유틸 ---------- */
   function $(id) { return document.getElementById(id); }
@@ -65,6 +69,89 @@
   }
 
   /* ---------- 기본 데이터 ---------- */
+  /* 기본 팀원 — 대장·총괄 팀장과 지금 쓰는 AI들 (v3: 키링·Cue·부이·마누스·뮤즈·하크·인스팅트 추가) */
+  function defaultMembers() {
+    return [
+      {
+        id: 'yeeun', name: '김예은', emoji: '👑', role: '대장 · 최종 결정',
+        status: '대장', desc: '모든 결정은 대장 승인 후 실행.', connected: true, isChief: true, demo: false
+      },
+      {
+        id: 'pinky', name: '핑키', emoji: '🌸', role: '총괄 팀장 · 분업 · 검수',
+        status: '작업 중', desc: '지시를 티켓으로 쪼개고 결과를 모아 대장에게 보고합니다.', connected: true, isChief: false, demo: false
+      },
+      {
+        id: 'gpt', name: '챗GPT', emoji: '🤖', role: '리서치 · 초안 작성',
+        status: '대기', desc: '자료 조사와 초안 작성. 출처를 함께 달아 보고합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'claude', name: '클로드', emoji: '📝', role: '기획 · 문서 다듬기',
+        status: '대기', desc: '긴 글 구조 잡기와 문장 다듬기. 고친 이유를 함께 적습니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'gemini', name: '제미나이', emoji: '🔍', role: '비교 · 사실 확인',
+        status: '대기', desc: '선택지를 나란히 비교하고 사실관계를 확인합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'cue', name: '큐', emoji: '🗂️', role: '에이전트 팀 · 업무 인계 (Cue)',
+        status: '미연결', desc: '각자 메일·전화·컴퓨터를 가진 에이전트 팀을 꾸려 조사·정리·발표를 나눠 맡깁니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'keyring', name: '키링', emoji: '📞', role: '전화·예약 대행 (Keyring)',
+        status: '미연결', desc: '전화로만 받는 예약, 고객센터 대기, 구독 해지까지 대신 하고 통화 내용을 정리해 보고합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'vooy', name: '부이', emoji: '🛍️', role: '메신저 심부름 · 취향 기억 (Vooy)',
+        status: '미연결', desc: '메신저에서 말하면 쿠팡·배달·예약까지 실행하고, 취향과 약속 조율을 기억합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'manus', name: '마누스', emoji: '🖐️', role: '장시간 실행 · 결과물 제작 (Manus)',
+        status: '미연결', desc: '조사·발표자료·데이터 분석을 스스로 계획해 끝까지 만들고 결과물 파일로 넘깁니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'muse', name: '뮤즈', emoji: '🎨', role: '일정·메일·쇼핑 비서 (Muse)',
+        status: '미연결', desc: '메일·일정·예산·쇼핑을 연결해 승인받아 처리하고, 앱을 닫아도 계속 일합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'hark', name: '하크', emoji: '👂', role: '생활 OS · 먼저 챙기기 (Hark)',
+        status: '미연결', desc: '내 컴퓨터를 대신 쓰는 Handoff로 예약·구매를 끝내고, 놓칠 일을 먼저 제안합니다.', connected: false, isChief: false, demo: true
+      },
+      {
+        id: 'instinct', name: '인스팅트', emoji: '💬', role: '문자 심부름 · 자체 폰 (Instinct)',
+        status: '미연결', desc: '문자나 전화로 부리면 자체 폰·컴퓨터로 예약·구매·이메일을 끝까지 처리합니다.', connected: false, isChief: false, demo: true
+      }
+    ];
+  }
+
+  function defaultMember(id) {
+    var list = defaultMembers();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+
+  /* 예전 팀원 목록에 새 기본 팀원을 채웁니다(버전 2 → 3 마이그레이션).
+     새 팀원이 하나도 없는 목록일 때만 채워서, 일부러 지운 팀원이 새로고침마다 되살아나지 않게 합니다. */
+  function mergeNewMembers(list) {
+    var members = Array.isArray(list) ? list.slice() : [];
+    var changed = false;
+    // v2의 '큐'는 키링과 역할이 섞여 있었으므로, 손대지 않은 경우에만 새 역할로 바꿉니다.
+    members.forEach(function (m) {
+      if (m && m.id === 'cue' && m.role === LEGACY_CUE_ROLE) {
+        var d = defaultMember('cue');
+        if (d) { m.role = d.role; m.desc = d.desc; changed = true; }
+      }
+    });
+    var present = {};
+    members.forEach(function (m) { if (m && m.id) present[m.id] = true; });
+    var missing = NEW_MEMBER_IDS.filter(function (id) { return !present[id]; });
+    if (missing.length !== NEW_MEMBER_IDS.length) return { members: members, changed: changed };
+    missing.forEach(function (id) {
+      var d = defaultMember(id);
+      if (d) { members.push(clone(d)); changed = true; }
+    });
+    return { members: members, changed: changed };
+  }
+
   function seedState() {
     var now = Date.now();
     var t = function (min) { return new Date(now - min * 60000).toISOString(); };
@@ -72,32 +159,7 @@
       version: STATE_VERSION,
       demoMode: true,
       settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false },
-      members: [
-        {
-          id: 'yeeun', name: '김예은', emoji: '👑', role: '대장 · 최종 결정',
-          status: '대장', desc: '모든 결정은 대장 승인 후 실행.', connected: true, isChief: true, demo: false
-        },
-        {
-          id: 'pinky', name: '핑키', emoji: '🌸', role: '총괄 팀장 · 분업 · 검수',
-          status: '작업 중', desc: '지시를 티켓으로 쪼개고 결과를 모아 대장에게 보고합니다.', connected: true, isChief: false, demo: false
-        },
-        {
-          id: 'gpt', name: '챗GPT', emoji: '🤖', role: '리서치 · 초안 작성',
-          status: '대기', desc: '자료 조사와 초안 작성. 출처를 함께 달아 보고합니다.', connected: false, isChief: false, demo: true
-        },
-        {
-          id: 'claude', name: '클로드', emoji: '📝', role: '기획 · 문서 다듬기',
-          status: '대기', desc: '긴 글 구조 잡기와 문장 다듬기. 고친 이유를 함께 적습니다.', connected: false, isChief: false, demo: true
-        },
-        {
-          id: 'gemini', name: '제미나이', emoji: '🔍', role: '비교 · 사실 확인',
-          status: '대기', desc: '선택지를 나란히 비교하고 사실관계를 확인합니다.', connected: false, isChief: false, demo: true
-        },
-        {
-          id: 'cue', name: '큐', emoji: '🗂️', role: '키링 · 정리 · 기록',
-          status: '미연결', desc: '회의실 답변을 요약해 업무판 티켓으로 옮깁니다.', connected: false, isChief: false, demo: true
-        }
-      ],
+      members: defaultMembers(),
       tasks: [
         {
           id: uid('t'), title: '카페 오픈 준비 체크리스트', ownerId: 'yeeun', status: '완료',
@@ -177,6 +239,9 @@
       var savedVersion = typeof saved.version === 'number' ? saved.version : 1;
       var tasks = Array.isArray(saved.tasks) ? saved.tasks : base.tasks;
       if (savedVersion < STATE_VERSION) tasks = refreshDemoTasks(tasks, base.tasks);
+      var members = Array.isArray(saved.members) && saved.members.length ? saved.members : base.members;
+      // 버전 2 → 3: 예전에 저장된 팀원 목록에 새 기본 팀원을 채워 넣습니다.
+      if (savedVersion < STATE_VERSION) members = mergeNewMembers(members).members;
       var next = {
         version: STATE_VERSION,
         demoMode: saved.demoMode !== false,
@@ -187,7 +252,7 @@
           apiSecret: (saved.settings && saved.settings.apiSecret) || '',
           dirty: !!(saved.settings && saved.settings.dirty)
         },
-        members: Array.isArray(saved.members) && saved.members.length ? saved.members : base.members,
+        members: members,
         tasks: tasks,
         threads: Array.isArray(saved.threads) ? saved.threads : base.threads
       };
@@ -283,6 +348,7 @@
 
   /* 서버 데이터를 화면에 적용. 예시(데모) 항목은 이 브라우저 것을 그대로 둡니다. */
   function applyRemote(data) {
+    var teamMerged = false;
     var remoteTasks = Array.isArray(data.tasks) ? data.tasks : null;
     var remoteThreads = Array.isArray(data.messages) ? data.messages : null;
     if (remoteTasks) {
@@ -293,8 +359,17 @@
       state.threads = state.threads.filter(function (t) { return t.demo; })
         .concat(remoteThreads.filter(function (t) { return t && !t.demo; }));
     }
-    if (Array.isArray(data.team) && data.team.length) state.members = data.team;
+    if (Array.isArray(data.team) && data.team.length) {
+      // 클라우드에 예전 팀원 목록이 남아 있으면 새 기본 팀원을 같이 채용합니다.
+      var team = mergeNewMembers(data.team);
+      state.members = team.members;
+      teamMerged = team.changed;
+    } else if (!state.members.length) {
+      state.members = defaultMembers();
+      teamMerged = true;
+    }
     if (data.telegram) sync.telegram = data.telegram;
+    return { teamMerged: teamMerged };
   }
 
   function localOnlyCount() {
@@ -329,11 +404,12 @@
         pushToServer();
         return true;
       }
-      applyRemote(data);
+      var applied = applyRemote(data);
       sync.lastAt = data.updatedAt || '';
       save(false);
       renderAll();
       setSyncState('on');
+      if (applied && applied.teamMerged) queuePush();
       if (!silent) toast('실시간 DB에서 최신 내용을 받았어요.');
       return true;
     }).catch(function (err) {
@@ -498,14 +574,32 @@
   }
 
   /* ---------- 연결 문구(프롬프트) ---------- */
+  /* 팀원별 '이 역할에서 지킬 것' 한 줄 — 저장 데이터에는 넣지 않고 연결 문구에만 붙입니다. */
+  var PROMPT_TIPS = {
+    pinky: '지시를 받으면 티켓으로 쪼갠 목록을 먼저 보여 주고, 끝나면 누가 무엇을 했는지 한 줄씩 모아 보고한다.',
+    gpt: '자료는 출처 링크를 함께 달고, 초안은 대장이 바로 고칠 수 있는 문장으로 준다.',
+    claude: '문장을 고칠 때는 고친 이유를 한 줄씩 붙이고, 원문과 바뀐 문장을 같이 보여 준다.',
+    gemini: '비교할 때는 표로 정리하고, 사실 확인은 근거 링크와 확인한 날짜를 함께 적는다.',
+    cue: '한 지시를 에이전트 팀에 나눠 맡길 때는 누가 무엇을 맡는지 먼저 적고, 넘길 때 결과물 이름과 남은 일을 함께 넘긴다.',
+    keyring: '전화·예약·해지처럼 실행이 필요한 일은 하기 전에 무엇을 할지 한 줄로 확인받고, 끝나면 통화·처리 결과를 요약해 보고한다. 상대에게는 대장을 돕는 AI 비서라는 점을 먼저 밝힌다.',
+    vooy: '메신저로 온 부탁은 취향·자주 쓰는 곳을 먼저 확인하고, 주문·예약은 결제 전에 금액과 조건을 확인받는다.',
+    manus: '오래 걸리는 일은 단계 목록을 먼저 보여 주고, 끝나면 결과물 파일 이름과 확인 방법을 함께 보고한다.',
+    muse: '메일·일정·예산을 읽을 때는 필요한 범위만 보고, 보내기·구매·예약은 승인받은 것만 실행한다.',
+    hark: '예약·구매·결제는 실행 전에 무엇을 얼마에 할지 먼저 보여 주고, 놓치기 쉬운 일은 한 번 더 알려 준다.',
+    instinct: '문자로 받은 심부름은 자기 폰·컴퓨터로 끝까지 처리하되, 예약·구매 확정 전에는 반드시 확인을 받는다.'
+  };
+
   function buildPrompt(m) {
-    return [
+    var lines = [
       '너는 「핑키오피스」 팀의 ' + m.name + ' (' + m.role + ') 역할이야.',
       '',
       '[팀]',
       '- 대장: 김예은 — 최종 결정권자. 모든 결정은 대장 승인 후 실행.',
       '- 총괄 팀장: 핑키 — 지시를 티켓으로 쪼개고 결과를 모아 대장에게 보고.',
-      '- 너의 한 줄 역할: ' + (m.desc || m.role),
+      '- 너의 한 줄 역할: ' + (m.desc || m.role)
+    ];
+    if (PROMPT_TIPS[m.id]) lines.push('- 이 역할에서 지킬 것: ' + PROMPT_TIPS[m.id]);
+    lines.push(
       '',
       '[일하는 방식]',
       '1. 지시는 회의실(우편함) 티켓 하나에 하나씩 처리한다.',
@@ -521,7 +615,8 @@
       '',
       '[지금 할 일]',
       '회의실에 도착한 마지막 지시를 읽고 위 양식으로 답해줘. 지시가 아직 없으면 "대기 중"이라고만 말해줘.'
-    ].join('\n');
+    );
+    return lines.join('\n');
   }
 
   /* ---------- 렌더: 헤더/탭 ---------- */
