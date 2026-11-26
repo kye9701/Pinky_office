@@ -871,7 +871,7 @@
       + '<span class="ds-avatar">' + esc(m.emoji || '🙂') + '</span>'
       + '<span class="ds-stand"></span>'
       + '<span class="ds-monitor"><span class="ds-screen"></span><span class="ds-led"></span></span>'
-      + '<span class="ds-desk"><span class="ds-keyboard"></span><span class="ds-mug"></span></span>'
+      + '<span class="ds-desk"><span class="ds-keyboard"></span><span class="ds-mug"></span><span class="ds-legs"></span></span>'
       + '</span>'
       + '<span class="ds-state">' + esc(deskStateText(m)) + '</span>'
       + '</button>';

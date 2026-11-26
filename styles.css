@@ -419,17 +419,17 @@ body {
 .ds-scene {
   position: relative;
   display: block;
-  height: 5.4em;
+  height: 5.9em;
 }
 
 /* 의자 (아바타 뒤) */
 .ds-chair {
   position: absolute;
   left: 50%;
-  bottom: 2.9em;
+  bottom: 2.75em;
   transform: translateX(-50%);
-  width: 2.9em;
-  height: 2em;
+  width: 3em;
+  height: 1.85em;
   background: #6b579c;
   border-radius: 0.4em 0.4em 0 0;
   box-shadow: inset 0 0.32em 0 #8771bd, 0 0.16em 0 rgba(0, 0, 0, 0.3);
@@ -463,12 +463,13 @@ body {
 .ds-stand {
   position: absolute;
   left: 50%;
-  bottom: 1.75em;
+  bottom: 1.9em;
   transform: translateX(-50%);
-  width: 0.7em;
-  height: 0.35em;
-  background: #3d3448;
-  z-index: 2;
+  width: 0.42em;
+  height: 0.42em;
+  background: #4a3f57;
+  box-shadow: 0 0.1em 0 rgba(60, 36, 16, 0.4);
+  z-index: 4;
 }
 .ds-monitor {
   position: absolute;
@@ -525,17 +526,39 @@ body {
   position: absolute;
   left: 0.26em;
   right: 0.26em;
-  bottom: 0;
-  height: 1.8em;
-  background: linear-gradient(180deg, #e2ad70 0%, #cc9155 55%, #a9713f 100%);
-  border-radius: 2px;
-  box-shadow: 0 0.35em 0 #7c4f2b, 0 0 0 1px rgba(74, 44, 22, 0.35), inset 0 0.22em 0 rgba(255, 255, 255, 0.28);
+  bottom: 0.42em;
+  height: 1.5em;
+  background: linear-gradient(180deg, #f0c48a 0%, #e2ad70 26%, #cc9155 58%, #a9713f 100%);
+  border-radius: 2px 2px 1px 1px;
+  box-shadow: 0 0 0 1px rgba(74, 44, 22, 0.32), inset 0 0.24em 0 rgba(255, 255, 255, 0.3), 0 0.16em 0 rgba(74, 44, 22, 0.35);
   z-index: 3;
 }
+
+/* 책상 다리 */
+.ds-legs {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.4em;
+  height: 0.4em;
+  z-index: 2;
+}
+.ds-legs::before,
+.ds-legs::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 0.16em;
+  height: 0.42em;
+  background: #6b4423;
+  box-shadow: 0.05em 0.06em 0 rgba(0, 0, 0, 0.25);
+}
+.ds-legs::before { left: 8%; }
+.ds-legs::after { right: 8%; }
 .ds-keyboard {
   position: absolute;
   left: 50%;
-  bottom: 0.35em;
+  bottom: 0.26em;
   transform: translateX(-50%);
   width: 2.4em;
   height: 0.45em;
@@ -547,7 +570,7 @@ body {
 .ds-mug {
   position: absolute;
   right: 0.45em;
-  bottom: 0.42em;
+  bottom: 0.3em;
   width: 0.5em;
   height: 0.6em;
   background: #ff9bb5;
