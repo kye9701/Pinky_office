@@ -357,12 +357,10 @@ body {
   padding: 1px 0 3px;
 }
 .boss-row .desk-seat {
-  width: 46%;
-  max-width: 168px;
+  width: 40%;
+  max-width: 150px;
   font-size: 10.5px;
-  background: rgba(255, 243, 226, 0.12);
-  border: 1px solid rgba(255, 243, 226, 0.22);
-  border-radius: 6px;
+  background: transparent;
 }
 
 /* ---------- 책상 한 칸 ---------- */
@@ -370,7 +368,7 @@ body {
   position: relative;
   display: block;
   width: 100%;
-  padding: 1.5em 0 0.6em;
+  padding: 1.6em 0.2em 0.6em;
   font-size: 9px;
   font-family: inherit;
   color: var(--text);
@@ -428,16 +426,16 @@ body {
 .ds-chair {
   position: absolute;
   left: 50%;
-  bottom: 2.85em;
+  bottom: 2.9em;
   transform: translateX(-50%);
-  width: 2.5em;
-  height: 1.8em;
-  background: #5b4a86;
-  border-radius: 0.35em 0.35em 0 0;
-  box-shadow: inset 0 0.3em 0 #745fa8, 0 0.15em 0 rgba(0, 0, 0, 0.3);
+  width: 2.9em;
+  height: 2em;
+  background: #6b579c;
+  border-radius: 0.4em 0.4em 0 0;
+  box-shadow: inset 0 0.32em 0 #8771bd, 0 0.16em 0 rgba(0, 0, 0, 0.3);
   z-index: 0;
 }
-.desk-seat.is-chief .ds-chair { background: #8a6a2f; box-shadow: inset 0 0.3em 0 #b98d3d, 0 0.15em 0 rgba(0, 0, 0, 0.3); }
+.desk-seat.is-chief .ds-chair { background: #8a6a2f; box-shadow: inset 0 0.32em 0 #b98d3d, 0 0.16em 0 rgba(0, 0, 0, 0.3); }
 .desk-seat.is-away .ds-chair { transform: translateX(-50%) translateX(0.5em) rotate(7deg); opacity: 0.85; }
 
 /* 픽셀 아바타 */
@@ -448,8 +446,8 @@ body {
   transform: translateX(-50%);
   display: grid;
   place-items: center;
-  width: 1.9em;
-  height: 1.9em;
+  width: 1.95em;
+  height: 1.95em;
   font-size: 1.05em;
   line-height: 1;
   background: radial-gradient(circle at 35% 30%, #3b2c46, #241a2c);
@@ -525,13 +523,13 @@ body {
 /* 책상 상판 */
 .ds-desk {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 0.26em;
+  right: 0.26em;
   bottom: 0;
   height: 1.8em;
   background: linear-gradient(180deg, #e2ad70 0%, #cc9155 55%, #a9713f 100%);
   border-radius: 2px;
-  box-shadow: 0 0.35em 0 #7c4f2b, inset 0 0.22em 0 rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0.35em 0 #7c4f2b, 0 0 0 1px rgba(74, 44, 22, 0.35), inset 0 0.22em 0 rgba(255, 255, 255, 0.28);
   z-index: 3;
 }
 .ds-keyboard {
@@ -563,22 +561,22 @@ body {
   content: "";
   position: absolute;
   left: 0.5em;
-  bottom: 0.45em;
-  width: 0.45em;
-  height: 0.45em;
-  background: #4fae63;
-  box-shadow: inset 0 -0.12em 0 #2f7c45, 0.45em -0.45em 0 -0.1em #5fc274;
+  bottom: 0.32em;
+  width: 0.42em;
+  height: 0.34em;
+  background: #bd6238;
+  box-shadow: 0 -0.3em 0 #4fae63, -0.22em -0.3em 0 #4fae63, 0.22em -0.3em 0 #4fae63, 0 -0.58em 0 #5fc274;
   z-index: 4;
 }
 .desk-seat.is-boss .ds-desk::after {
   content: "";
   position: absolute;
-  right: 1.5em;
-  bottom: 0.4em;
-  width: 0.8em;
-  height: 0.3em;
+  right: 1.4em;
+  bottom: 0.34em;
+  width: 0.72em;
+  height: 0.22em;
   background: #fffdf5;
-  box-shadow: 0 0.12em 0 #e2d9c6, 0 0.24em 0 #cfc4ae;
+  box-shadow: 0 0.1em 0 #e2d9c6, 0.08em -0.1em 0 #f4ecdd;
   z-index: 4;
 }
 
