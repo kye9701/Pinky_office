@@ -29,14 +29,26 @@
 
 html, body { margin: 0; padding: 0; }
 
+/* 배경은 html·body 양쪽에 단색을 먼저 깔고, 그라데이션은 문서 전체 높이에 맞춰 늘린다.
+   (이전처럼 background-attachment: fixed 로 두면 모바일에서 스크롤 아래쪽이 흰색으로 끊겨 보임) */
+html {
+  min-height: 100%;
+  background-color: #120c10;
+}
+
 body {
   font-family: var(--font);
   color: var(--text);
-  background:
+  position: relative;
+  background-color: #120c10;
+  background-image:
     radial-gradient(120% 60% at 50% -10%, rgba(232, 54, 95, 0.28) 0%, rgba(232, 54, 95, 0) 60%),
     radial-gradient(80% 40% at 100% 8%, rgba(255, 127, 174, 0.14) 0%, rgba(255, 127, 174, 0) 70%),
     linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 55%, #120c10 100%);
-  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: scroll;
+  min-height: 100%;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -45,7 +57,7 @@ body {
 
 body::before {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   background-image:
@@ -211,10 +223,10 @@ body::before {
 .banner img {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
+  max-height: 220px;
   object-fit: cover;
-  object-position: center 46%;
-  transform: scale(1.02);
+  object-position: center 50%;
 }
 .banner::after {
   content: "";
@@ -226,19 +238,19 @@ body::before {
 
 .banner-bar {
   position: absolute;
-  left: 12px; right: 12px; bottom: 12px;
+  left: 10px; right: 10px; bottom: 10px;
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px 9px;
   flex-wrap: wrap;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   background: rgba(20, 12, 17, 0.72);
   border: 1px solid rgba(255, 168, 196, 0.2);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--pink-soft);
 }
 .banner-bar strong { color: var(--pink); font-weight: 800; letter-spacing: -0.2px; }
@@ -943,7 +955,8 @@ body::before {
   .app { padding: 0 22px calc(34px + env(safe-area-inset-bottom)); }
   .brand h1 { font-size: 25px; }
   .team-grid { gap: 12px; }
-  .banner img { aspect-ratio: 16 / 10; }
+  .banner img { aspect-ratio: 16 / 9; max-height: 340px; }
+  .banner-bar { left: 12px; right: 12px; bottom: 12px; padding: 10px 14px; font-size: 12.5px; gap: 9px; }
   .modal { align-items: center; padding: 22px; }
   .modal-card { border-radius: 24px; border-bottom: 1px solid var(--line-strong); max-height: 86dvh; }
   .messages { max-height: 34dvh; }
@@ -953,7 +966,7 @@ body::before {
   .app { max-width: 1040px; }
   .team-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .kanban { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .banner img { aspect-ratio: 16 / 9; }
+  .banner img { max-height: 340px; }
 }
 
 @media (max-width: 380px) {

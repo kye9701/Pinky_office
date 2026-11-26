@@ -4,6 +4,7 @@
   'use strict';
 
   var KEY = 'pinky-office-v1';
+  var STATE_VERSION = 2;
   var TASK_STATUS = ['대기', '작업 중', '검수 대기', '완료'];
   var THREAD_STATUS = ['대기', '작업 중', '완료'];
 
@@ -68,7 +69,7 @@
     var now = Date.now();
     var t = function (min) { return new Date(now - min * 60000).toISOString(); };
     return {
-      version: 1,
+      version: STATE_VERSION,
       demoMode: true,
       settings: { webhookUrl: '', webhookKind: 'n8n' },
       members: [
@@ -99,8 +100,8 @@
       ],
       tasks: [
         {
-          id: uid('t'), title: '12월 퇴사 인수인계 체크리스트', ownerId: 'yeeun', status: '완료',
-          note: '정리 후 회사에 전달 완료', createdAt: t(180), updatedAt: t(40), demo: true
+          id: uid('t'), title: '카페 오픈 준비 체크리스트', ownerId: 'yeeun', status: '완료',
+          note: '정리 후 공유 완료', createdAt: t(180), updatedAt: t(40), demo: true
         },
         {
           id: uid('t'), title: '회의실 답장 템플릿 다듬기', ownerId: 'gpt', status: '검수 대기',
@@ -147,6 +148,13 @@
   var state = loadState();
   var ui = { view: 'office', statusFilter: '전체', ownerFilter: null, threadId: null };
 
+  /* 예시(데모) 업무만 최신 문구로 다시 깔고, 직접 만든 업무는 그대로 남긴다 */
+  function refreshDemoTasks(savedTasks, baseTasks) {
+    var mine = savedTasks.filter(function (t) { return t && !t.demo; });
+    var demos = baseTasks.filter(function (t) { return t.demo; });
+    return mine.concat(demos);
+  }
+
   function loadState() {
     var base = seedState();
     try {
@@ -154,17 +162,24 @@
       if (!raw) return base;
       var saved = JSON.parse(raw);
       if (!saved || typeof saved !== 'object') return base;
-      return {
-        version: 1,
+      var savedVersion = typeof saved.version === 'number' ? saved.version : 1;
+      var tasks = Array.isArray(saved.tasks) ? saved.tasks : base.tasks;
+      if (savedVersion < STATE_VERSION) tasks = refreshDemoTasks(tasks, base.tasks);
+      var next = {
+        version: STATE_VERSION,
         demoMode: saved.demoMode !== false,
         settings: {
           webhookUrl: (saved.settings && saved.settings.webhookUrl) || '',
           webhookKind: (saved.settings && saved.settings.webhookKind) || 'n8n'
         },
         members: Array.isArray(saved.members) && saved.members.length ? saved.members : base.members,
-        tasks: Array.isArray(saved.tasks) ? saved.tasks : base.tasks,
+        tasks: tasks,
         threads: Array.isArray(saved.threads) ? saved.threads : base.threads
       };
+      if (savedVersion < STATE_VERSION) {
+        try { localStorage.setItem(KEY, JSON.stringify(next)); } catch (err) { /* 저장 실패는 무시 */ }
+      }
+      return next;
     } catch (err) {
       return base;
     }
