@@ -1526,8 +1526,8 @@
     renderAll();
     renderMeeting();
     toast(leave
-      ? m.name + '을(를) 휴직 처리했어요. 책상 컴퓨터를 껐어요 💤'
-      : m.name + '이(가) 복직했어요. 제자리로 돌아왔어요 ▶️');
+      ? m.name + ' 휴직 처리 완료 · 책상 컴퓨터를 껐어요 💤'
+      : m.name + ' 복직 완료 · 제자리로 돌아왔어요 ▶️');
   }
 
   function removeMember(id) {
