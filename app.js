@@ -626,12 +626,67 @@
       '결론: (한 줄)',
       '한 일: (3줄 이내, 결과물 이름 포함)',
       '확인 필요: (대장에게 물어볼 것, 최대 3개 / 없으면 "없음")',
-      '다음 단계: (다음에 할 일 1개)',
-      '',
-      '[지금 할 일]',
-      '회의실에 도착한 마지막 지시를 읽고 위 양식으로 답해줘. 지시가 아직 없으면 "대기 중"이라고만 말해줘.'
+      '다음 단계: (다음에 할 일 1개)'
     );
+
+    /* 실시간 DB 주소가 있으면, 이 AI가 실제로 회의실을 읽고 답글을 남기는 주소까지 넣습니다. */
+    var api = apiUrl();
+    if (apiConfigured()) {
+      var secret = (state.settings.apiSecret || '').trim();
+      var q = function (query) {
+        return api + (api.indexOf('?') > -1 ? '&' : '?') + query + (secret ? '&secret=' + encodeURIComponent(secret) : '');
+      };
+      lines.push(
+        '',
+        '[회의실 연결 — 이 주소로 핑키오피스 회의실을 읽고 답글을 남긴다]',
+        '회의실 주소: ' + api,
+        '1) 읽기(먼저 이것부터 연다): ' + q('action=sync&format=text'),
+        '   → 회의실 티켓·업무판·팀 목록이 글로 나온다. "id=..."가 티켓 번호다.',
+        '   → JSON이 필요하면: ' + q('action=sync'),
+        '2) 답글 달기 (웹 주소를 열 수 있는 도구): ' + q('action=add_message&threadId=<티켓 id>&from=member&memberId=' + encodeURIComponent(m.id) + '&text=<답글>'),
+        '   → text는 URL 인코딩한다(공백 %20, 줄바꿈 %0A). 답글은 500자 안쪽으로 줄인다.',
+        '   → 답글을 남기면 {"ok":true,...}가 돌아온다. 실패하면 돌아온 error를 한 줄로 보고한다.',
+        '3) 답글 달기 (POST·API 호출이 되는 도구): POST ' + api,
+        '   → Content-Type: text/plain, 본문: {"action":"add_message","threadId":"<티켓 id>","from":"member","memberId":"' + m.id + '","text":"<답글>"' + (secret ? ',"secret":"' + secret + '"' : '') + '}',
+        '4) 새 업무 올리기: ' + q('action=add_task&title=<업무>&ownerId=' + encodeURIComponent(m.id) + '&status=대기'),
+        '5) 주소를 아예 열 수 없는 도구라면, 답글 본문을 그대로 답변으로 보여 줘. 대장이 복사해서 회의실에 붙인다.'
+      );
+    }
+
+    lines.push('', '[지금 할 일]');
+    if (apiConfigured()) {
+      lines.push(
+        '1. 위 읽기 주소를 열어 회의실을 확인한다.',
+        '2. 담당이 "' + m.name + '(id=' + m.id + ')"이고 상태가 "대기" 또는 "작업 중"인 티켓의 마지막 지시를 위 보고 양식으로 처리한다.',
+        '3. 가능하면 그 티켓 id로 회의실에 답글도 남긴다.',
+        '4. 네 담당 지시가 아직 없으면 "대기 중"이라고만 답한다.'
+      );
+    } else {
+      lines.push('회의실에 도착한 마지막 지시를 읽고 위 양식으로 답해줘. 지시가 아직 없으면 "대기 중"이라고만 말해줘.');
+    }
     return lines.join('\n');
+  }
+
+  /* 연결 문구를 복사했으면 '연결됨 · 대기'로 표시 — 복사만 하고 계속 '미연결'로 남지 않게 */
+  function markConnectionCopied(m) {
+    if (!m || m.isChief) return false;
+    var changed = false;
+    if (!m.connected) { m.connected = true; changed = true; }
+    if (m.status === '미연결') { m.status = '대기'; changed = true; }
+    if (!changed) return false;
+    save();
+    renderAll();
+    return true;
+  }
+
+  /* 답글이 어디로 들어왔는지(웹·텔레그램) 표시 */
+  function viaLabel(via) {
+    var v = String(via || '').trim();
+    if (!v) return '';
+    if (v === 'telegram') return '텔레그램';
+    if (v === 'web') return '웹 연결';
+    if (v.indexOf('web:') === 0) return '웹 연결 · ' + v.slice(4);
+    return v;
   }
 
   /* ---------- 렌더: 헤더/탭 ---------- */
@@ -979,9 +1034,10 @@
 
     $('threadMessages').innerHTML = (thread.messages || []).map(function (msg) {
       var isChief = msg.from === 'chief';
+      var via = viaLabel(msg.via);
       return ''
         + '<div class="msg ' + (isChief ? 'msg-chief' : 'msg-member') + '">'
-        + '  <span class="msg-meta">' + esc((isChief ? '대장 김예은' : memberName(thread.memberId)) + ' · ' + fmtTime(msg.at)) + '</span>'
+        + '  <span class="msg-meta">' + esc((isChief ? '대장 김예은' : memberName(thread.memberId)) + ' · ' + fmtTime(msg.at) + (via ? ' · ' + via : '')) + '</span>'
         + esc(msg.text)
         + '</div>';
     }).join('') || '<div class="empty">아직 대화가 없어요.</div>';
@@ -1121,7 +1177,12 @@
         toast(memberName(id) + '에게 지시를 적어 보세요.');
       } else if (act === 'copy') {
         var m = memberById(id);
-        if (m) copyText(buildPrompt(m), m.name + ' 연결 문구를 복사했어요. 그 AI에 붙여넣으세요.');
+        if (!m) return;
+        var okMessage = m.name + ' 연결 문구를 복사했어요. 그 AI에 붙여넣으세요.';
+        if (markConnectionCopied(m)) {
+          okMessage = m.name + ' 연결 문구를 복사했어요. 상태를 「대기 · 연결됨」으로 바꿨어요 — 이제 그 AI가 회의실을 읽고 답글을 남길 수 있어요.';
+        }
+        copyText(buildPrompt(m), okMessage);
       }
     });
 
