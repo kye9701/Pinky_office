@@ -100,7 +100,7 @@
       <h2 id="officeTitle" class="sr-only">우리 팀</h2>
 
       <div class="section-head">
-        <h2>우리 팀 <span class="muted small">13명</span></h2>
+        <h2>우리 팀 <span class="muted small" id="teamCount">13명</span></h2>
         <div class="head-actions">
           <button type="button" class="pill pill-sm" data-goto="meeting">💬 대회의실</button>
           <button type="button" class="pill pill-sm" data-goto="board">📋 업무판</button>
@@ -174,11 +174,8 @@
 <div class="modal sheet" id="modal-seat" role="dialog" aria-modal="true" aria-labelledby="seatTitle" hidden>
   <div class="modal-card sheet-card">
     <div class="sheet-grab" aria-hidden="true"></div>
-    <div class="modal-head">
-      <div class="thread-head-text">
-        <h2 id="seatTitle">팀원</h2>
-        <p id="seatMeta" class="muted small"></p>
-      </div>
+    <div class="modal-head sheet-head">
+      <h2 id="seatTitle" class="sr-only">팀원 카드</h2>
       <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
     </div>
     <div class="modal-body">
@@ -187,6 +184,7 @@
         <div class="seat-sheet-id">
           <b id="seatName">핑키</b>
           <p class="muted small" id="seatRole">총괄 팀장</p>
+          <p class="muted small" id="seatMeta"></p>
         </div>
         <span class="badge badge-wait" id="seatBadge"><span class="dot"></span>대기</span>
       </div>

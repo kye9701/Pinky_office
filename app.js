@@ -761,7 +761,13 @@
     });
     if (name === 'meeting') renderMeeting();
     if (name === 'board') renderBoard();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    var tabsEl = document.querySelector('.tabs');
+    if (tabsEl && typeof tabsEl.getBoundingClientRect === 'function') {
+      var top = tabsEl.getBoundingClientRect().top + (window.scrollY || 0) - 62;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0 });
+    }
   }
 
   /* ---------- 렌더: 오피스 ---------- */
@@ -850,6 +856,7 @@
   function renderTeam() {
     var grid = $('teamGrid');
     if (!grid) return;
+    if ($('teamCount')) $('teamCount').textContent = state.members.length + '명';
     grid.innerHTML = state.members.map(function (m) {
       var isChief = !!m.isChief;
       var cls = 'team-card';
@@ -1189,17 +1196,22 @@
       return;
     }
     var body = JSON.stringify(payload);
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: body,
-      mode: 'cors'
-    }).then(function (res) {
-      if (res.ok) toast('웹훅으로도 보냈어요 · ' + state.settings.webhookKind);
-      else toast('웹훅 응답이 ' + res.status + ' 이에요. 지시는 저장됐어요.');
-    }).catch(function () {
-      toast('지시는 저장했지만 웹훅 전송이 막혔어요 (CORS 설정 확인)');
-    });
+    if (typeof fetch !== 'function') return;
+    try {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+        mode: 'cors'
+      }).then(function (res) {
+        if (res.ok) toast('웹훅으로도 보냈어요 · ' + state.settings.webhookKind);
+        else toast('웹훅 응답이 ' + res.status + ' 이에요. 지시는 저장됐어요.');
+      }).catch(function () {
+        toast('지시는 저장했지만 웹훅 전송이 막혔어요 (CORS 설정 확인)');
+      });
+    } catch (err) {
+      toast('지시는 저장했지만 웹훅을 보내지 못했어요.');
+    }
   }
 
   /* ---------- 동작: 회의실 ---------- */
@@ -1366,8 +1378,8 @@
     var m = memberById(ui.seatId);
     var modal = $('modal-seat');
     if (!m) { if (modal) closeModal(modal); return; }
-    $('seatTitle').textContent = m.name;
-    $('seatMeta').textContent = (m.role || '') + ' · ' + (m.connected ? '연결됨' : '미연결');
+    $('seatTitle').textContent = m.name + ' 팀원 카드';
+    $('seatMeta').textContent = m.connected ? '연결됨 · 단톡방에서 바로 답해요' : '미연결 · 연결 문구를 복사해 초대하세요';
     $('seatEmoji').textContent = m.emoji || '🙂';
     $('seatEmoji').style.setProperty('--ring', ringOf(m.id));
     $('seatName').textContent = m.name;
