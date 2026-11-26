@@ -71,7 +71,7 @@
     return {
       version: STATE_VERSION,
       demoMode: true,
-      settings: { webhookUrl: '', webhookKind: 'n8n' },
+      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '' },
       members: [
         {
           id: 'yeeun', name: '김예은', emoji: '👑', role: '대장 · 최종 결정',
@@ -148,6 +148,18 @@
   var state = loadState();
   var ui = { view: 'office', statusFilter: '전체', ownerFilter: null, threadId: null };
 
+  /* 실시간 DB(Google Apps Script) 연결 상태 */
+  var API_POLL_MS = 15000;
+  var sync = {
+    status: 'off',      // off · connecting · saving · on · error
+    message: '',
+    lastAt: '',
+    timer: null,
+    poll: null,
+    listening: false,
+    telegram: null
+  };
+
   /* 예시(데모) 업무만 최신 문구로 다시 깔고, 직접 만든 업무는 그대로 남긴다 */
   function refreshDemoTasks(savedTasks, baseTasks) {
     var mine = savedTasks.filter(function (t) { return t && !t.demo; });
@@ -170,7 +182,9 @@
         demoMode: saved.demoMode !== false,
         settings: {
           webhookUrl: (saved.settings && saved.settings.webhookUrl) || '',
-          webhookKind: (saved.settings && saved.settings.webhookKind) || 'n8n'
+          webhookKind: (saved.settings && saved.settings.webhookKind) || 'n8n',
+          apiUrl: (saved.settings && saved.settings.apiUrl) || '',
+          apiSecret: (saved.settings && saved.settings.apiSecret) || ''
         },
         members: Array.isArray(saved.members) && saved.members.length ? saved.members : base.members,
         tasks: tasks,
@@ -185,14 +199,216 @@
     }
   }
 
-  function save() {
+  /* push=false 는 클라우드로 올리지 않고 이 브라우저에만 저장(초기 시드·동기화 수신 직후) */
+  function save(push) {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
+      if (push !== false) queuePush();
       return true;
     } catch (err) {
       toast('저장 공간이 부족해 저장하지 못했어요.');
       return false;
     }
+  }
+
+  /* ---------- 실시간 DB: 주소·비밀 키 ---------- */
+  function apiUrl() { return (state.settings.apiUrl || '').trim(); }
+
+  function apiConfigured() {
+    return /^https?:\/\//i.test(apiUrl());
+  }
+
+  function apiRequest(action, body, since) {
+    if (!apiConfigured()) return Promise.reject(new Error('실시간 DB 주소가 없어요.'));
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
+    var opts = { method: 'POST', cache: 'no-store', redirect: 'follow' };
+    var url = apiUrl();
+
+    if (action === 'sync') {
+      var q = ['action=sync', 't=' + Date.now()];
+      if (since) q.push('since=' + encodeURIComponent(since));
+      if (state.settings.apiSecret) q.push('secret=' + encodeURIComponent(state.settings.apiSecret));
+      opts.method = 'GET';
+      url += (url.indexOf('?') > -1 ? '&' : '?') + q.join('&');
+    } else {
+      var payload = { action: action };
+      if (state.settings.apiSecret) payload.secret = state.settings.apiSecret;
+      if (body) for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) payload[k] = body[k];
+      // text/plain 이면 브라우저가 preflight(OPTIONS)를 보내지 않아 Apps Script와 잘 맞아요.
+      opts.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      opts.body = JSON.stringify(payload);
+    }
+    if (ctrl) opts.signal = ctrl.signal;
+
+    return fetch(url, opts).then(function (res) {
+      if (timer) clearTimeout(timer);
+      if (!res || !res.ok) throw new Error('서버 응답 ' + (res ? res.status : '없음'));
+      return res.json();
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      throw new Error(err && err.name === 'AbortError' ? '응답이 늦어요(시간 초과)' : '연결하지 못했어요');
+    });
+  }
+
+  function setSyncState(status, message) {
+    sync.status = status;
+    if (typeof message === 'string') sync.message = message;
+    renderSyncState();
+  }
+
+  function renderSyncState() {
+    var stateLabel = {
+      off: '연결 안 함 · 이 브라우저에만 저장',
+      connecting: '연결하는 중…',
+      saving: '저장하는 중…',
+      on: '연결됨 · 폰·PC 실시간 동기화',
+      error: '연결 문제 · ' + (sync.message || '확인 필요')
+    }[sync.status] || '';
+    var el = $('apiState');
+    if (el) {
+      el.textContent = stateLabel + (sync.status === 'on' && sync.lastAt ? ' (' + fmtTime(sync.lastAt) + ')' : '');
+      el.setAttribute('data-state', sync.status);
+    }
+    var note = $('storeNote');
+    if (note) note.textContent = apiConfigured() ? '클라우드(실시간 DB)에 저장됩니다' : '이 브라우저에만 저장됩니다';
+    var tg = $('telegramState');
+    if (tg) {
+      if (sync.telegram && sync.telegram.ready) tg.textContent = '텔레그램 알림 연결됨';
+      else if (sync.telegram && sync.telegram.tokenSet) tg.textContent = '봇 토큰만 있음 · Chat ID 미감지';
+      else tg.textContent = '텔레그램 준비 전';
+    }
+  }
+
+  /* 서버 데이터를 화면에 적용. 예시(데모) 항목은 이 브라우저 것을 그대로 둡니다. */
+  function applyRemote(data) {
+    var remoteTasks = Array.isArray(data.tasks) ? data.tasks : null;
+    var remoteThreads = Array.isArray(data.messages) ? data.messages : null;
+    if (remoteTasks) {
+      state.tasks = state.tasks.filter(function (t) { return t.demo; })
+        .concat(remoteTasks.filter(function (t) { return t && !t.demo; }));
+    }
+    if (remoteThreads) {
+      state.threads = state.threads.filter(function (t) { return t.demo; })
+        .concat(remoteThreads.filter(function (t) { return t && !t.demo; }));
+    }
+    if (Array.isArray(data.team) && data.team.length) state.members = data.team;
+    if (data.telegram) sync.telegram = data.telegram;
+  }
+
+  function localOnlyCount() {
+    var n = 0;
+    state.tasks.forEach(function (t) { if (t && !t.demo) n++; });
+    state.threads.forEach(function (t) { if (t && !t.demo) n++; });
+    return n;
+  }
+
+  /* 클라우드 → 이 브라우저 */
+  function pullFromServer(silent) {
+    if (!apiConfigured()) return Promise.resolve(false);
+    return apiRequest('sync', null, sync.lastAt).then(function (data) {
+      if (!data || data.ok !== true) throw new Error((data && (data.message || data.error)) || '동기화 응답 오류');
+      if (data.telegram) sync.telegram = data.telegram;
+      if (data.changed === false) {
+        sync.lastAt = data.updatedAt || sync.lastAt;
+        setSyncState('on');
+        return false;
+      }
+      var remoteEmpty = (!data.tasks || !data.tasks.length) && (!data.messages || !data.messages.length);
+      if (remoteEmpty && !sync.lastAt && localOnlyCount() > 0) {
+        // 처음 연결: 클라우드가 비어 있으면 이 브라우저 내용을 올려 둡니다.
+        setSyncState('on');
+        pushToServer();
+        return true;
+      }
+      applyRemote(data);
+      sync.lastAt = data.updatedAt || '';
+      save(false);
+      renderAll();
+      setSyncState('on');
+      if (!silent) toast('실시간 DB에서 최신 내용을 받았어요.');
+      return true;
+    }).catch(function (err) {
+      setSyncState('error', err && err.message ? err.message : '연결 실패');
+      if (!silent) toast('실시간 DB 연결 문제: ' + sync.message);
+      return false;
+    });
+  }
+
+  /* 이 브라우저 → 클라우드 (0.8초 묶어서 한 번) */
+  function queuePush() {
+    if (!apiConfigured()) return;
+    if (sync.timer) clearTimeout(sync.timer);
+    sync.timer = setTimeout(function () {
+      sync.timer = null;
+      pushToServer();
+    }, 800);
+  }
+
+  function pushToServer() {
+    if (!apiConfigured()) return Promise.resolve(false);
+    var payload = {
+      tasks: state.tasks.filter(function (t) { return t && !t.demo; }),
+      messages: state.threads.filter(function (t) { return t && !t.demo; }),
+      team: state.members
+    };
+    setSyncState('saving');
+    return apiRequest('save_all', payload).then(function (data) {
+      if (!data || data.ok !== true) throw new Error((data && (data.message || data.error)) || '저장 실패');
+      if (data.telegram) sync.telegram = data.telegram;
+      sync.lastAt = data.updatedAt || sync.lastAt;
+      setSyncState('on');
+      if (data.notified) toast('텔레그램으로 알림도 보냈어요 (' + data.notified + '건)');
+      else if (data.telegramErrors && data.telegramErrors.length) { /* 알림 실패는 조용히 둠 */ }
+      return true;
+    }).catch(function (err) {
+      setSyncState('error', err && err.message ? err.message : '저장 실패');
+      toast('클라우드 저장이 막혔어요. 이 브라우저에는 저장됐어요.');
+      return false;
+    });
+  }
+
+  function startPolling() {
+    if (!apiConfigured()) return;
+    if (!sync.poll) {
+      sync.poll = setInterval(function () {
+        if (document.visibilityState === 'hidden') return;
+        pullFromServer(true);
+      }, API_POLL_MS);
+    }
+    if (!sync.listening) {
+      sync.listening = true;
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'hidden') pullFromServer(true);
+      });
+      window.addEventListener('focus', function () { pullFromServer(true); });
+    }
+  }
+
+  function stopPolling() {
+    if (sync.poll) clearInterval(sync.poll);
+    sync.poll = null;
+  }
+
+  /* #api=https://script.google.com/.../exec&key=비밀키 로 바로 연결 */
+  function readApiFromHash() {
+    var raw = String(window.location.hash || '').replace(/^#\/?/, '');
+    if (raw.indexOf('api=') === -1) return false;
+    var found = { url: '', key: '' };
+    raw.split('&').forEach(function (pair) {
+      var idx = pair.indexOf('=');
+      if (idx === -1) return;
+      var k = pair.slice(0, idx);
+      var v = pair.slice(idx + 1);
+      try { v = decodeURIComponent(v); } catch (err) { /* 그대로 사용 */ }
+      if (k === 'api' || k === 'url') found.url = v;
+      if (k === 'key' || k === 'secret') found.key = v;
+    });
+    if (!/^https?:\/\//i.test(found.url)) return false;
+    state.settings.apiUrl = found.url.trim();
+    if (found.key) state.settings.apiSecret = found.key.trim();
+    try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (err) { /* 무시 */ }
+    return true;
   }
 
   /* ---------- 표시용 데이터 ---------- */
@@ -516,6 +732,9 @@
     }
     if ($('webhookUrl')) $('webhookUrl').value = state.settings.webhookUrl || '';
     if ($('webhookKind')) $('webhookKind').value = state.settings.webhookKind || 'n8n';
+    if ($('apiUrl')) $('apiUrl').value = state.settings.apiUrl || '';
+    if ($('apiSecret')) $('apiSecret').value = state.settings.apiSecret || '';
+    renderSyncState();
   }
 
   function renderAll() {
@@ -524,6 +743,7 @@
     renderTeam();
     renderMeeting();
     renderBoard();
+    renderSyncState();
     if ($('modal-settings') && !$('modal-settings').hidden) renderSettings();
     if ($('modal-guide') && !$('modal-guide').hidden) renderReportFormats();
   }
@@ -1003,20 +1223,31 @@
       toast('테스트를 보냈어요. 받은 쪽을 확인해 주세요.');
     });
 
+    // 설정: 실시간 DB·텔레그램
+    $('saveApiBtn').addEventListener('click', function () { saveApiSettings(); });
+    $('testApiBtn').addEventListener('click', function () { testApi(); });
+    $('connectTelegramBtn').addEventListener('click', function () { connectTelegram(); });
+    $('testTelegramBtn').addEventListener('click', function () { testTelegram(); });
+
     // 설정: 데이터
     $('resetDemoBtn').addEventListener('click', function () {
       if (!window.confirm('데모 데이터를 처음 상태로 되돌릴까요? 직접 만든 업무·지시도 함께 지워져요.')) return;
       var keepUrl = state.settings.webhookUrl;
       var keepKind = state.settings.webhookKind;
+      var keepApi = state.settings.apiUrl;
+      var keepKey = state.settings.apiSecret;
       state = seedState();
       state.settings.webhookUrl = keepUrl;
       state.settings.webhookKind = keepKind;
+      state.settings.apiUrl = keepApi;
+      state.settings.apiSecret = keepKey;
       ui.ownerFilter = null;
       ui.statusFilter = '전체';
-      save();
+      save(false);
       renderSettings();
       renderAll();
       toast('데모 데이터를 초기화했어요.');
+      if (apiConfigured()) pullFromServer(true);
     });
 
     $('exportBtn').addEventListener('click', function () {
@@ -1024,12 +1255,86 @@
     });
   }
 
+  /* ---------- 설정: 실시간 DB · 텔레그램 ---------- */
+  function saveApiSettings() {
+    var url = ($('apiUrl') ? $('apiUrl').value : '').trim();
+    var key = ($('apiSecret') ? $('apiSecret').value : '').trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      toast('https://script.google.com/… 주소를 넣어 주세요.');
+      return;
+    }
+    state.settings.apiUrl = url;
+    state.settings.apiSecret = key;
+    save(false);
+    sync.lastAt = '';
+    if (!url) {
+      stopPolling();
+      setSyncState('off');
+      toast('실시간 DB 연결을 해제했어요. 이제 이 브라우저에만 저장돼요.');
+      return;
+    }
+    startPolling();
+    setSyncState('connecting');
+    pullFromServer(false);
+  }
+
+  function testApi() {
+    if (!apiConfigured()) { toast('실시간 DB 주소를 먼저 저장해 주세요.'); return; }
+    setSyncState('connecting');
+    apiRequest('ping').then(function (data) {
+      if (!data || data.ok !== true) throw new Error((data && (data.message || data.error)) || '응답 오류');
+      if (data.telegram) sync.telegram = data.telegram;
+      setSyncState('on');
+      toast('연결 확인 완료 · ' + (data.service || '핑키오피스 DB') + ' v' + (data.version || '?')
+        + (data.telegram && data.telegram.ready ? ' · 텔레그램 준비됨' : ''));
+    }).catch(function (err) {
+      setSyncState('error', err && err.message ? err.message : '연결 실패');
+      toast('연결하지 못했어요: ' + sync.message);
+    });
+  }
+
+  function connectTelegram() {
+    if (!apiConfigured()) { toast('실시간 DB 주소를 먼저 저장해 주세요.'); return; }
+    toast('텔레그램 연결 상태를 확인하고 있어요…');
+    apiRequest('telegram_connect').then(function (data) {
+      if (!data) throw new Error('응답 없음');
+      if (data.telegram) sync.telegram = data.telegram;
+      renderSyncState();
+      if (data.ok) {
+        toast('텔레그램 연결 완료 · @' + (data.bot || 'Pinky_office_bot') + ' (Chat ID 끝 ' + (data.chatTail || '') + ')');
+      } else {
+        toast(data.message || data.webhookError || '텔레그램 연결이 아직이에요. 안내를 확인해 주세요.');
+      }
+    }).catch(function (err) {
+      toast('텔레그램 연결 실패: ' + (err && err.message ? err.message : ''));
+    });
+  }
+
+  function testTelegram() {
+    if (!apiConfigured()) { toast('실시간 DB 주소를 먼저 저장해 주세요.'); return; }
+    apiRequest('telegram_test').then(function (data) {
+      if (data && data.ok) toast('텔레그램으로 테스트 알림을 보냈어요. 폰을 확인해 보세요.');
+      else toast('아직 보내지 못했어요: ' + ((data && (data.error || data.message)) || '텔레그램 연결 필요'));
+    }).catch(function (err) {
+      toast('전송 실패: ' + (err && err.message ? err.message : ''));
+    });
+  }
+
   /* ---------- 시작 ---------- */
   document.addEventListener('DOMContentLoaded', function () {
     bind();
+    var fromHash = readApiFromHash();
+    if (fromHash) save(false);
     renderAll();
     try {
-      if (!localStorage.getItem(KEY)) save();
+      if (!localStorage.getItem(KEY)) save(false);
     } catch (err) { /* 저장소를 쓸 수 없어도 화면은 동작합니다. */ }
+    if (apiConfigured()) {
+      startPolling();
+      setSyncState('connecting');
+      pullFromServer(!fromHash).then(function () {
+        if (fromHash) toast('실시간 DB를 연결했어요. 이제 폰·PC가 함께 동기화돼요.');
+      });
+    }
   });
 })();

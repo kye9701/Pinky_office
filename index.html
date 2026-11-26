@@ -131,7 +131,7 @@
 
   <footer class="foot">
     <span>핑키오피스 · 대장 김예은</span>
-    <span class="muted">이 브라우저에만 저장됩니다</span>
+    <span class="muted" id="storeNote">이 브라우저에만 저장됩니다</span>
   </footer>
 </div>
 
@@ -173,13 +173,13 @@
       </details>
 
       <details>
-        <summary>4. 텔레그램 · n8n 연결 방법</summary>
+        <summary>4. 실시간 DB · 텔레그램 연결 방법</summary>
         <ol class="rule-list">
-          <li><b>n8n</b>: 새 워크플로 → <code>Webhook</code> 노드 → Method <code>POST</code> → 만든 URL 복사.</li>
-          <li>우측 상단 <b>⚙️ 설정 → 자동화 연결</b>에 URL을 붙여넣고 <b>저장</b>, <b>테스트 전송</b>으로 확인해요.</li>
-          <li>Webhook 뒤에 <code>Telegram</code> 노드를 붙이면 회의실 지시가 텔레그램으로 와요. (본문의 <code>text</code> 필드를 쓰면 돼요)</li>
-          <li>전송 본문: <code>{ type, office, chief, to, title, message, status, createdAt, text }</code></li>
-          <li>브라우저 보안(CORS) 때문에 사이트에서 직접 못 보내는 경우가 있어요. 그때는 n8n Webhook 노드의 <b>Allowed Origins</b>에 이 사이트 주소를 추가해 주세요.</li>
+          <li><b>Apps Script</b>: <code>script.new</code> → <code>Code.gs</code>·<code>appsscript.json</code> 붙여넣기 → <b>배포 → 새 배포 → 웹 앱</b>, 실행 계정 <code>나</code>, 액세스 <code>모든 사용자</code> → 나온 <code>/exec</code> 주소 복사.</li>
+          <li>우측 상단 <b>⚙️ 설정 → 실시간 DB</b>에 주소를 붙여넣고 <b>저장하고 동기화</b>. 폰·PC가 같은 내용을 보고, 15초마다 새 내용을 확인해요.</li>
+          <li><b>텔레그램</b>: 봇(<code>@Pinky_office_bot</code>)에게 <code>/start</code>를 보낸 뒤 설정에서 <b>자동 연결</b>. Chat ID를 알아서 찾고 웹훅까지 걸어요.</li>
+          <li>회의실에 새 지시가 올라오면 텔레그램으로 알림이 와요. 그 알림에 <b>답장</b>하면 같은 티켓에 답글로 달립니다.</li>
+          <li><b>n8n</b>도 그대로 쓸 수 있어요: Webhook 노드(POST) → 주소를 설정의 <b>Webhook URL</b>에 저장. (본문: <code>{ type, office, chief, to, title, message, status, createdAt, text }</code>)</li>
         </ol>
       </details>
 
@@ -211,6 +211,38 @@
       <h3 class="block-title">팀원 관리</h3>
       <div id="memberAdmin" class="admin-list"></div>
       <button type="button" class="btn btn-ghost btn-block" id="addMemberBtn">＋ 팀원 추가</button>
+
+      <h3 class="block-title">실시간 DB <span class="muted small">(폰·PC 동기화 · PC를 꺼도 24시간)</span></h3>
+      <div class="field">
+        <span>Google Apps Script 웹 앱 URL</span>
+        <input id="apiUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+      <div class="form-row two">
+        <label class="field">
+          <span>비밀 키 <span class="muted small">(선택)</span></span>
+          <input id="apiSecret" type="text" autocomplete="off" placeholder="비워 두어도 됩니다" />
+        </label>
+        <div class="field field-btn">
+          <span>&nbsp;</span>
+          <button type="button" class="btn btn-ghost" id="testApiBtn">연결 확인</button>
+        </div>
+      </div>
+      <p class="muted small" id="apiState">연결 안 함 · 이 브라우저에만 저장</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary" id="saveApiBtn">저장하고 동기화</button>
+      </div>
+
+      <div class="admin-row">
+        <div>
+          <b>텔레그램 봇 연결</b>
+          <p class="muted small">봇(<code>@Pinky_office_bot</code>)에게 <code>/start</code>를 보낸 뒤 누르면 Chat ID를 자동으로 찾아 알림을 걸어 둡니다.</p>
+          <p class="muted small" id="telegramState">텔레그램 준비 전</p>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="mini-btn" id="testTelegramBtn">알림 테스트</button>
+          <button type="button" class="mini-btn" id="connectTelegramBtn">자동 연결</button>
+        </div>
+      </div>
 
       <h3 class="block-title">자동화 연결 <span class="muted small">(선택)</span></h3>
       <div class="field">
