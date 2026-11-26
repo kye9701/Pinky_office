@@ -71,7 +71,7 @@
     return {
       version: STATE_VERSION,
       demoMode: true,
-      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '' },
+      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false },
       members: [
         {
           id: 'yeeun', name: '김예은', emoji: '👑', role: '대장 · 최종 결정',
@@ -184,7 +184,8 @@
           webhookUrl: (saved.settings && saved.settings.webhookUrl) || '',
           webhookKind: (saved.settings && saved.settings.webhookKind) || 'n8n',
           apiUrl: (saved.settings && saved.settings.apiUrl) || '',
-          apiSecret: (saved.settings && saved.settings.apiSecret) || ''
+          apiSecret: (saved.settings && saved.settings.apiSecret) || '',
+          dirty: !!(saved.settings && saved.settings.dirty)
         },
         members: Array.isArray(saved.members) && saved.members.length ? saved.members : base.members,
         tasks: tasks,
@@ -306,6 +307,13 @@
   /* 클라우드 → 이 브라우저 */
   function pullFromServer(silent) {
     if (!apiConfigured()) return Promise.resolve(false);
+    // 아직 못 올린 내 변경이 있으면 받아오지 않고 먼저 올립니다(덮어쓰기 방지)
+    if (state.settings.dirty) {
+      return pushToServer(true).then(function (ok) {
+        if (!ok) return false;
+        return pullFromServer(silent);
+      });
+    }
     return apiRequest('sync', null, sync.lastAt).then(function (data) {
       if (!data || data.ok !== true) throw new Error((data && (data.message || data.error)) || '동기화 응답 오류');
       if (data.telegram) sync.telegram = data.telegram;
@@ -345,7 +353,7 @@
     }, 800);
   }
 
-  function pushToServer() {
+  function pushToServer(silent) {
     if (!apiConfigured()) return Promise.resolve(false);
     var payload = {
       tasks: state.tasks.filter(function (t) { return t && !t.demo; }),
@@ -357,13 +365,18 @@
       if (!data || data.ok !== true) throw new Error((data && (data.message || data.error)) || '저장 실패');
       if (data.telegram) sync.telegram = data.telegram;
       sync.lastAt = data.updatedAt || sync.lastAt;
+      if (state.settings.dirty) {
+        state.settings.dirty = false;
+        try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (err) { /* 무시 */ }
+      }
       setSyncState('on');
       if (data.notified) toast('텔레그램으로 알림도 보냈어요 (' + data.notified + '건)');
-      else if (data.telegramErrors && data.telegramErrors.length) { /* 알림 실패는 조용히 둠 */ }
       return true;
     }).catch(function (err) {
+      state.settings.dirty = true;
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* 무시 */ }
       setSyncState('error', err && err.message ? err.message : '저장 실패');
-      toast('클라우드 저장이 막혔어요. 이 브라우저에는 저장됐어요.');
+      if (!silent) toast('클라우드 저장이 막혔어요. 이 브라우저에는 저장됐어요.');
       return false;
     });
   }
