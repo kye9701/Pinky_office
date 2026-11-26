@@ -780,22 +780,22 @@
   /* ---------- 렌더: 오피스 좌석 맵 ---------- */
   /* 좌석 좌표는 office 이미지(1672×941) 안의 책상·소파·러그 위치를 %로 적은 것 */
   var SEATS = {
-    yeeun:    { x: 46,   y: 61 },
-    pinky:    { x: 57.5, y: 55 },
-    gpt:      { x: 32.5, y: 45 },
-    claude:   { x: 40,   y: 52 },
-    gemini:   { x: 49.5, y: 38.5 },
-    cue:      { x: 53.5, y: 47 },
-    keyring:  { x: 65.5, y: 47.5 },
-    vooy:     { x: 71.5, y: 50 },
-    manus:    { x: 78,   y: 53.5 },
-    muse:     { x: 21,   y: 45 },
-    hark:     { x: 36,   y: 72 },
-    instinct: { x: 45,   y: 77 },
-    groq:     { x: 80,   y: 30 }
+    yeeun:    { x: 56, y: 40 },
+    pinky:    { x: 56, y: 56 },
+    gpt:      { x: 28, y: 38 },
+    claude:   { x: 28, y: 54 },
+    gemini:   { x: 42, y: 32 },
+    cue:      { x: 42, y: 48 },
+    keyring:  { x: 70, y: 44 },
+    vooy:     { x: 84, y: 46 },
+    manus:    { x: 84, y: 62 },
+    muse:     { x: 14, y: 44 },
+    hark:     { x: 28, y: 70 },
+    instinct: { x: 42, y: 70 },
+    groq:     { x: 84, y: 28 }
   };
   var SPARE_SEATS = [
-    { x: 26, y: 64 }, { x: 61, y: 72 }, { x: 88, y: 44 }, { x: 14, y: 58 }, { x: 50, y: 88 }, { x: 68, y: 86 }
+    { x: 14, y: 62 }, { x: 70, y: 62 }, { x: 14, y: 30 }, { x: 70, y: 28 }, { x: 56, y: 72 }, { x: 42, y: 58 }
   ];
   var RINGS = ['#ff7a9c', '#ffb26b', '#7ee0c0', '#8fb8ff', '#c79bff', '#ffd166', '#6ee7d7', '#ff9bd2', '#9be15d', '#f2a2ff', '#7dd3fc', '#ffc0a6', '#b0f0c0'];
 

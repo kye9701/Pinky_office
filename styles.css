@@ -249,9 +249,9 @@ body {
 
 .seat-ava {
   position: relative;
-  width: 24px; height: 24px;
+  width: 22px; height: 22px;
   display: grid; place-items: center;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 25%, #2b2033, #171020);
@@ -260,14 +260,14 @@ body {
 }
 
 .seat-name {
-  font-size: 8.5px;
+  font-size: 8px;
   font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.2px;
+  line-height: 1.15;
+  letter-spacing: -0.3px;
   color: #2c1d29;
   background: #fff;
-  padding: 1px 5px;
-  border-radius: 7px;
+  padding: 1px 4px;
+  border-radius: 6px;
   white-space: nowrap;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
@@ -391,7 +391,7 @@ body {
   background: linear-gradient(135deg, rgba(255, 95, 126, 0.85), rgba(255, 138, 92, 0.8));
   border-color: transparent;
 }
-.n-hint { color: var(--muted); font-size: 10px; margin-left: auto; }
+.n-hint { display: none; color: var(--muted); font-size: 10px; margin-left: auto; }
 
 /* ---------- 티켓 레일 ---------- */
 .rail-head {
@@ -478,7 +478,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 2px 1px 10px;
+  padding: 2px 3px 10px 1px;
 }
 
 .day-divider {
@@ -1309,13 +1309,16 @@ code {
   .top-room-name { display: block; font-size: 10.5px; font-weight: 800; color: var(--text-dim); }
   .top-room-meta { display: block; font-size: 9.5px; color: var(--muted); }
   .office-title .ob-ver { display: inline; font-size: 9px; color: #7d6877; }
+  .n-hint { display: inline; }
+  .seat-ava { width: 26px; height: 26px; font-size: 13px; }
+  .seat-name { font-size: 9px; padding: 1px 5px; }
   .team-grid { grid-template-columns: 1fr 1fr; }
   .kanban { grid-template-columns: 1fr 1fr; }
 }
 
 @media (min-width: 760px) {
   .app { padding: 0 18px calc(160px + env(safe-area-inset-bottom)); }
-  .seat-ava { width: 30px; height: 30px; font-size: 15px; }
+  .seat-ava { width: 32px; height: 32px; font-size: 16px; }
   .seat-name { font-size: 10px; padding: 2px 7px; }
   .brand h1 { font-size: 21px; }
   .team-grid { grid-template-columns: repeat(3, 1fr); }
