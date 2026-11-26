@@ -603,10 +603,26 @@ body {
   z-index: 4;
 }
 
+/* 책상 그림자 (바닥에 붙어 보이게) */
+.desk-seat::after {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 0.5em;
+  height: 0.55em;
+  background: radial-gradient(ellipse at center, rgba(74, 40, 12, 0.26), rgba(74, 40, 12, 0) 72%);
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* 상태 글자 */
 .ds-state {
-  display: block;
+  display: inline-block;
   margin-top: 0.5em;
+  padding: 0.05em 0.4em;
+  border-radius: 2px;
+  background: rgba(58, 32, 12, 0.3);
   font-size: 8px;
   font-weight: 800;
   letter-spacing: -0.2px;
@@ -1216,6 +1232,7 @@ body.view-office .composer { display: none; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   padding: 2px 7px;
   font-size: 9.5px;
   font-weight: 700;
