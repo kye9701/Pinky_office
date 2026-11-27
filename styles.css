@@ -188,14 +188,48 @@ body {
   overflow: hidden;
 }
 
-.office-bar { padding: 2px; }
+.office-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 2px;
+}
+
+/* ✨ 움직임 ON / ⏸️ 멈춤 */
+.motion-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 9px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: #7d6877;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.motion-toggle.is-on {
+  color: #1c1220;
+  background: linear-gradient(135deg, #ffe08a, #ffb0c8);
+  border-color: rgba(255, 176, 200, 0.7);
+  box-shadow: 0 2px 8px rgba(255, 140, 170, 0.32);
+}
+.motion-toggle:active { transform: scale(0.96); }
 
 .office-title {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
-  padding: 10px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  padding: 10px 8px 10px 10px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -270,7 +304,8 @@ body {
   border: 0;
   cursor: pointer;
   z-index: 3;
-  transition: transform 0.12s ease;
+  /* 움직임 ON: 좌석 사이를 부드럽게 오감 (--walk는 자리마다 조금씩 다름) */
+  transition: transform 0.12s ease, left var(--walk, 2.4s) ease-in-out, top var(--walk, 2.4s) ease-in-out;
   -webkit-tap-highlight-color: transparent;
 }
 .desk-seat > span { pointer-events: none; }
@@ -282,23 +317,59 @@ body {
 }
 .desk-seat:active { transform: translate(-50%, -50%) scale(0.94); }
 
+/* 미니 사람 캐릭터: 자리 핀 위에 서 있는 2D 캐릭터 (머리·옷 색·표정이 팀원마다 다름) */
 .ds-avatar {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 8.5px;
-  line-height: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 26%, #fffdf8, #ffe9d4);
-  box-shadow:
-    0 0 0 1.5px var(--ring, #ff6f93),
-    0 0 0 2.3px rgba(255, 253, 248, 0.72),
-    0 1px 2.5px rgba(48, 26, 8, 0.45);
+  left: 50%;
+  bottom: -1px;
+  width: 15px;
+  height: 20.4px;
+  margin-left: -7.5px;
+  transform: scaleX(1);
+  transition: transform 0.18s ease;
+  pointer-events: none;
 }
+.desk-seat.is-left .ds-avatar { transform: scaleX(-1); }
+
+.ds-person {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.2px rgba(42, 22, 8, 0.4));
+}
+.ds-person .p-spot {
+  fill: var(--ring, #ff6f93);
+  opacity: 0.55;
+}
+
+/* 움직임: 걷기(통통) · 작업 중 톡톡 · 휴직 느리게 · 대장은 잔잔하게 */
+.clay-room:not(.is-motion-off) .desk-seat.is-walk .ds-person { animation: personWalk 1.05s ease-in-out infinite; }
+.clay-room:not(.is-motion-off) .desk-seat.is-tap .ds-person { animation: personTap 0.9s ease-in-out infinite; }
+.clay-room:not(.is-motion-off) .desk-seat.is-sway .ds-person { animation: personIdle 4.4s ease-in-out infinite; }
+.clay-room:not(.is-motion-off) .desk-seat.is-idle .ds-person { animation: personIdle 3.6s ease-in-out infinite; }
+
+@keyframes personWalk {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.1px); }
+}
+@keyframes personTap {
+  0%, 62%, 100% { transform: translateY(0); }
+  72% { transform: translateY(-0.8px); }
+  84% { transform: translateY(0.2px); }
+}
+@keyframes personIdle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-0.5px) rotate(-1.2deg); }
+}
+
+/* 멈춤: 자리에서 정지 (애니메이션·이동 전이 모두 끔) */
+.clay-room.is-motion-off .ds-person,
+.clay-room.is-motion-off .ds-avatar { animation: none !important; }
+.clay-room.is-motion-off .desk-seat { transition: transform 0.12s ease; }
 .ds-name {
   position: absolute;
-  top: 50%;
+  top: 62%;
   left: calc(100% + 2px);
   transform: translateY(-50%);
   padding: 0.5px 2.5px 1px;
@@ -329,28 +400,16 @@ body {
   background: #22c55e;
   animation: dotPulse 1.7s ease-in-out infinite;
 }
-.desk-seat.is-off .ds-avatar { filter: grayscale(0.75) brightness(0.99); }
+.desk-seat.is-off .ds-person { filter: grayscale(0.75) brightness(0.99); }
 .desk-seat.is-off .ds-name { color: #6f5f50; }
 .desk-seat.is-off .ds-dot { background: #a2917f; }
-.desk-seat.is-away .ds-avatar {
-  box-shadow:
-    0 0 0 1.5px #a495bb,
-    0 0 0 2.3px rgba(255, 253, 248, 0.72),
-    0 1px 2.5px rgba(48, 26, 8, 0.36);
-  filter: grayscale(0.4);
-}
+.desk-seat.is-away .ds-person { filter: grayscale(0.45); opacity: 0.86; }
 .desk-seat.is-away .ds-name { color: #574768; background: rgba(250, 246, 255, 0.86); }
 .desk-seat.is-away .ds-dot { display: none; }
-.desk-seat.is-chief .ds-avatar {
-  background: radial-gradient(circle at 34% 26%, #fff8dd, #ffe08a);
-  box-shadow:
-    0 0 0 1.5px #d9a12b,
-    0 0 0 2.3px rgba(255, 253, 248, 0.8),
-    0 1px 3px rgba(120, 80, 10, 0.5);
-}
 .desk-seat.is-chief .ds-name { color: #5a3d05; background: rgba(255, 247, 220, 0.9); }
 .desk-seat.is-boss { width: 19px; height: 19px; }
-.desk-seat.is-boss .ds-avatar { font-size: 10px; }
+.desk-seat.is-boss .ds-avatar { width: 18px; height: 24.4px; margin-left: -9px; }
+.desk-seat.is-chief .ds-person .p-spot { opacity: 0.8; }
 
 @keyframes dotPulse {
   0%, 100% { box-shadow: 0 0 0 1px #fffdf6; }
@@ -1408,7 +1467,8 @@ code {
 
 /* ---------- 넓은 화면 ---------- */
 @media (min-width: 380px) {
-  .ds-avatar { font-size: 9.5px; }
+  .ds-avatar { width: 16.5px; height: 22.4px; margin-left: -8.25px; }
+  .desk-seat.is-boss .ds-avatar { width: 20px; height: 27.2px; margin-left: -10px; }
   .ds-name { font-size: 7.4px; }
 }
 
@@ -1418,7 +1478,8 @@ code {
   .top-room-meta { display: block; font-size: 9.5px; color: var(--muted); }
   .office-title .ob-ver { display: inline; font-size: 9px; color: #7d6877; }
   .n-hint { display: inline; }
-  .ds-avatar { font-size: 11px; }
+  .ds-avatar { width: 18.5px; height: 25.2px; margin-left: -9.25px; }
+  .desk-seat.is-boss .ds-avatar { width: 22.5px; height: 30.6px; margin-left: -11.25px; }
   .ds-name { font-size: 8px; }
   .team-grid { grid-template-columns: 1fr 1fr; }
   .kanban { grid-template-columns: 1fr 1fr; }
@@ -1432,8 +1493,8 @@ code {
   .app { padding: 0 18px calc(160px + env(safe-area-inset-bottom)); }
   .desk-seat { width: 30px; height: 30px; }
   .desk-seat.is-boss { width: 34px; height: 34px; }
-  .ds-avatar { font-size: 16px; }
-  .desk-seat.is-boss .ds-avatar { font-size: 18px; }
+  .ds-avatar { width: 30px; height: 40.8px; margin-left: -15px; }
+  .desk-seat.is-boss .ds-avatar { width: 36px; height: 48.9px; margin-left: -18px; }
   .ds-name { font-size: 11px; padding: 1px 5px 2px; left: calc(100% + 4px); }
   .desk-seat.name-left .ds-name { right: calc(100% + 4px); }
   .ds-dot { width: 8px; height: 8px; box-shadow: 0 0 0 1.5px #fffdf6; }
@@ -1448,4 +1509,6 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  /* 캐릭터는 통통 튀지 않아도, 좌석 사이 이동은 부드럽게 (순간이동 금지) */
+  .desk-seat { transition: transform 0.12s ease, left 2.4s linear, top 2.4s linear !important; }
 }

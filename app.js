@@ -219,7 +219,7 @@
     return {
       version: STATE_VERSION,
       demoMode: true,
-      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false, wakeMode: '전원' },
+      settings: { webhookUrl: '', webhookKind: 'n8n', apiUrl: '', apiSecret: '', dirty: false, wakeMode: '전원', motion: true },
       members: defaultMembers(),
       fired: [],
       tasks: [
@@ -416,6 +416,18 @@
     var el = $('dbWarn');
     if (!el) return;
     el.hidden = apiConfigured();
+    if (apiConfigured()) return;
+    var title = el.querySelector('.dw-title');
+    var text = el.querySelector('.dw-text');
+    /* 홈 화면 웹앱으로 열렸는데 DB 주소가 비어 있으면 이유를 짚어 줍니다. */
+    if (isStandaloneApp()) {
+      if (title) title.textContent = '홈 화면 앱으로 열려 DB 주소가 없어요!';
+      if (text) text.innerHTML = '「홈 화면에 추가」할 때 주소에 <code>#api=…</code>가 들어 있어야 DB가 이어져요. '
+        + '⚙️ 설정에서 <b>원클릭 링크</b>를 복사해 주소창에 붙여 연 뒤, 그 주소로 다시 홈 화면에 추가해 주세요.';
+    } else {
+      if (title) title.textContent = '지금 「이 브라우저에만 저장」 상태예요!';
+      if (text) text.innerHTML = '원클릭 링크(<code>#api=…</code>)로 열거나 <b>⚙️ 설정</b>에서 DB 주소를 넣어야 AI·텔레그램과 연결돼요. 이 상태에서는 AI가 단톡방을 읽지 못해 답도 못 해요.';
+    }
   }
 
   /* 지금 저장된 DB 주소로 폰에서 바로 열 수 있는 원클릭 링크 */
@@ -568,8 +580,13 @@
 
   /* #api=https://script.google.com/.../exec&key=비밀키 로 바로 연결 */
   function readApiFromHash() {
-    var raw = String(window.location.hash || '').replace(/^#\/?/, '');
-    if (raw.indexOf('api=') === -1) return false;
+    /* #api=... 과 ?api=... 둘 다 지원하고, 주소는 그대로 남깁니다.
+       iOS Safari 「홈 화면에 추가」는 지금 주소를 저장하기 때문에 주소창에서 #api=를 지우면
+       홈 화면 앱에서 DB 주소가 사라집니다. */
+    var hash = String(window.location.hash || '').replace(/^#\/?/, '');
+    var search = String(window.location.search || '').replace(/^\?/, '');
+    var raw = hash.indexOf('api=') > -1 ? hash : (search.indexOf('api=') > -1 ? search : '');
+    if (!raw) return false;
     var found = { url: '', key: '' };
     raw.split('&').forEach(function (pair) {
       var idx = pair.indexOf('=');
@@ -583,8 +600,15 @@
     if (!/^https?:\/\//i.test(found.url)) return false;
     state.settings.apiUrl = found.url.trim();
     if (found.key) state.settings.apiSecret = found.key.trim();
-    try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (err) { /* 무시 */ }
     return true;
+  }
+
+  /* 홈 화면 앱(iOS 독립 실행)으로 열렸는지 */
+  function isStandaloneApp() {
+    try {
+      return !!(window.navigator && window.navigator.standalone)
+        || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (err) { return false; }
   }
 
   /* ---------- 표시용 데이터 ---------- */
@@ -615,13 +639,49 @@
     var done = threads.filter(function (t) { return t.status === '완료'; }).length;
     var waiting = tasks.filter(function (t) { return t.status === '대기'; }).length
       + threads.filter(function (t) { return t.status === '대기'; }).length;
-    var offline = state.members.filter(function (m) { return !m.connected && !m.isChief && m.status !== LEAVE_STATUS; }).length;
+    var offline = state.members.filter(function (m) { return !m.isChief && m.status !== LEAVE_STATUS && !isConnected(m); }).length;
     var leave = state.members.filter(function (m) { return m.status === LEAVE_STATUS; }).length;
     return { working: working, done: done, waiting: waiting, offline: offline, leave: leave };
   }
 
   function onLeave(m) { return !!m && m.status === LEAVE_STATUS; }
   function onLeaveId(id) { return onLeave(memberById(id)); }
+
+  /* AI 답글이 달린 팀원은 연결된 것으로 봅니다(그록·Groq 답글은 서버가 memberId를 붙여 저장).
+     상태값(미연결)은 그대로 두고, 화면에 보여줄 때만 '대기'로 바꿔 혼동을 줄입니다. */
+  function hasAiReply(id) {
+    if (!id) return false;
+    for (var i = 0; i < state.threads.length; i++) {
+      var t = state.threads[i];
+      if (!t || t.demo) continue;
+      var list = t.messages || [];
+      for (var j = 0; j < list.length; j++) {
+        var msg = list[j];
+        if (msg && msg.from === 'member' && msg.memberId === id) return true;
+      }
+    }
+    return false;
+  }
+
+  function isConnected(m) {
+    if (!m) return false;
+    if (m.isChief || m.connected) return true;
+    return hasAiReply(m.id);
+  }
+
+  function displayStatus(m) {
+    if (!m) return '';
+    if (m.status === '미연결' && isConnected(m)) return '대기';
+    return m.status;
+  }
+
+  /* 답글 작성자: 서버가 붙인 msg.memberId를 먼저 쓰고, 없으면 티켓 담당을 씁니다.
+     (3인 회의처럼 한 티켓에 여러 팀원이 답할 때 각자 이름·아바타로 보이게) */
+  function msgAuthorId(t, msg) {
+    var id = msg && msg.memberId ? String(msg.memberId) : '';
+    if (id && memberById(id)) return id;
+    return t ? t.memberId : '';
+  }
 
   /* ---------- 토스트 ---------- */
   var toastTimer = null;
@@ -767,6 +827,11 @@
     if (v === 'telegram') return '텔레그램';
     if (v === 'web') return '웹 연결';
     if (v.indexOf('web:') === 0) return '웹 연결 · ' + v.slice(4);
+    if (v === 'groq') return '⚡ Groq';
+    if (v.indexOf('groq:') === 0) {
+      var who = v.slice(5).trim();
+      return '⚡ ' + (memberById(who) ? memberName(who) : (who || 'Groq'));
+    }
     return v;
   }
 
@@ -834,8 +899,200 @@
     return RINGS[i % RINGS.length];
   }
 
+  /* ---------- 미니 사람 캐릭터 (인라인 SVG) ----------
+     팀원마다 머리 모양·머리색·옷 색·표정이 다릅니다. 대장은 왕관을 씁니다. */
+  var PERSON_LOOKS = {
+    yeeun: { skin: '#f4cfae', hair: '#3a2620', style: 'long', shirt: '#f0b23c', pants: '#6b4a2a', expr: 'smile' },
+    pinky: { skin: '#f8d8c0', hair: '#ff9ec4', style: 'bob', shirt: '#ff6f93', pants: '#8e3c5c', expr: 'grin' },
+    gpt: { skin: '#e8bd9a', hair: '#2b2b2b', style: 'short', shirt: '#10a37f', pants: '#2f3c39', expr: 'smile' },
+    claude: { skin: '#f2c9a8', hair: '#6b4a33', style: 'side', shirt: '#d97757', pants: '#3a2f2a', expr: 'calm' },
+    gemini: { skin: '#eec3a2', hair: '#3b3a55', style: 'curly', shirt: '#5b8cff', pants: '#2d3350', expr: 'smile' },
+    cue: { skin: '#f6d3b7', hair: '#2f2b3a', style: 'bob', shirt: '#7d6bff', pants: '#2c2842', expr: 'calm' },
+    keyring: { skin: '#e0b090', hair: '#8b5e3c', style: 'pony', shirt: '#ffb26b', pants: '#5b4632', expr: 'grin' },
+    vooy: { skin: '#f8dcc6', hair: '#2f4f4a', style: 'long', shirt: '#5fd8b6', pants: '#2b4a44', expr: 'wink' },
+    manus: { skin: '#e8bd9a', hair: '#1f1f24', style: 'short', shirt: '#68788c', pants: '#2b313a', expr: 'calm' },
+    muse: { skin: '#f4cfae', hair: '#6d4a8f', style: 'long', shirt: '#c79bff', pants: '#4a3466', expr: 'smile' },
+    hark: { skin: '#f6d3b7', hair: '#4a3a2a', style: 'spiky', shirt: '#ffd166', pants: '#6a5223', expr: 'grin' },
+    instinct: { skin: '#eec3a2', hair: '#2b3b46', style: 'short', shirt: '#6ee7d7', pants: '#2b4a52', expr: 'wink' },
+    groq: { skin: '#f2c9a8', hair: '#2a1f18', style: 'spiky', shirt: '#ff7043', pants: '#5a2a18', expr: 'grin' }
+  };
+  var FALLBACK_LOOKS = [
+    { skin: '#f6d3b7', hair: '#3f2d24', style: 'bob', shirt: '#8fb8ff', pants: '#3a4152', expr: 'smile' },
+    { skin: '#eec3a2', hair: '#2c2a30', style: 'bun', shirt: '#ffb26b', pants: '#5b4632', expr: 'grin' },
+    { skin: '#f8dcc6', hair: '#6b4a33', style: 'short', shirt: '#7ee0c0', pants: '#2f4a44', expr: 'calm' },
+    { skin: '#e0b090', hair: '#1f1f24', style: 'pony', shirt: '#c79bff', pants: '#4a3466', expr: 'wink' },
+    { skin: '#f4cfae', hair: '#4b3a55', style: 'spiky', shirt: '#ffd166', pants: '#6a5223', expr: 'smile' },
+    { skin: '#e8bd9a', hair: '#3a2620', style: 'curly', shirt: '#ff9bd2', pants: '#7a3c5a', expr: 'grin' }
+  ];
+
+  function lookOf(m) {
+    if (m && PERSON_LOOKS[m.id]) return PERSON_LOOKS[m.id];
+    var s = String((m && (m.id || m.name)) || 'pinky');
+    var h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973;
+    return FALLBACK_LOOKS[h % FALLBACK_LOOKS.length];
+  }
+
+  function personSvg(m) {
+    var L = lookOf(m);
+    var hair = L.hair, style = L.style, shirt = L.shirt, pants = L.pants;
+    var back = '';
+    if (style === 'long') {
+      back = '<rect x="7.3" y="9.2" width="13.4" height="12.6" rx="5.6" fill="' + hair + '"/>';
+    } else if (style === 'bob') {
+      back = '<rect x="7.6" y="9.4" width="12.8" height="9.4" rx="4.5" fill="' + hair + '"/>';
+    } else if (style === 'pony') {
+      back = '<circle cx="21.6" cy="14.6" r="2.7" fill="' + hair + '"/>'
+        + '<rect x="18.8" y="9.8" width="4.4" height="4.4" rx="2.2" fill="' + hair + '"/>';
+    } else if (style === 'bun') {
+      back = '<circle cx="14" cy="5.2" r="2.4" fill="' + hair + '"/>';
+    } else if (style === 'curly') {
+      back = '<circle cx="9.2" cy="9.6" r="2.6" fill="' + hair + '"/>'
+        + '<circle cx="14" cy="7.7" r="2.8" fill="' + hair + '"/>'
+        + '<circle cx="18.8" cy="9.6" r="2.6" fill="' + hair + '"/>';
+    }
+    var fringe = '';
+    if (style === 'side') {
+      fringe = '<path d="M8.1 12.6C9.2 9.6 11.4 8 14 8c2.2 0 4 0.9 5.2 2.4-2.6 1.2-6.8 1.4-9.8 0.2z" fill="' + hair + '"/>';
+    } else if (style === 'spiky') {
+      fringe = '<path d="M8.2 10.4 9.5 6.4 11.4 8.8 13.1 5.2 14.9 8.6 16.8 5.8 18.4 8.4 19.8 10.4z" fill="' + hair + '"/>';
+    }
+    var eyes;
+    if (L.expr === 'wink') {
+      eyes = '<circle cx="16.2" cy="13.9" r="0.9" fill="#3a2a24"/>'
+        + '<path d="M10.7 14q1.1 0.9 2.2 0" fill="none" stroke="#3a2a24" stroke-width="0.9" stroke-linecap="round"/>';
+    } else {
+      eyes = '<circle cx="11.9" cy="13.9" r="0.9" fill="#3a2a24"/>'
+        + '<circle cx="16.1" cy="13.9" r="0.9" fill="#3a2a24"/>';
+    }
+    var mouth;
+    if (L.expr === 'grin') {
+      mouth = '<path d="M12.1 16.2h3.8a1.9 1.9 0 0 1-3.8 0z" fill="#b2504a"/>';
+    } else if (L.expr === 'calm') {
+      mouth = '<path d="M12.6 16.6h2.8" stroke="#8a4a3f" stroke-width="0.9" stroke-linecap="round"/>';
+    } else {
+      mouth = '<path d="M12.3 16.3q1.7 1.5 3.4 0" fill="none" stroke="#8a4a3f" stroke-width="0.9" stroke-linecap="round"/>';
+    }
+    var crown = (m && m.isChief)
+      ? '<path d="M10 7.6 10 4.5 12.3 6.1 14 3.2 15.7 6.1 18 4.5 18 7.6z" fill="#ffd45e" stroke="#c9901a" stroke-width="0.5" stroke-linejoin="round"/>'
+      : '';
+    return '<svg class="ds-person" viewBox="0 0 28 38" aria-hidden="true" focusable="false">'
+      + '<ellipse class="p-spot" cx="14" cy="36.2" rx="6.6" ry="1.7"/>'
+      + back
+      + '<rect x="10.9" y="28" width="2.8" height="6.6" rx="1.3" fill="' + pants + '"/>'
+      + '<rect x="14.3" y="28" width="2.8" height="6.6" rx="1.3" fill="' + pants + '"/>'
+      + '<rect x="10.3" y="33.6" width="3.5" height="2.3" rx="1.1" fill="#3b2b23"/>'
+      + '<rect x="14.2" y="33.6" width="3.5" height="2.3" rx="1.1" fill="#33251f"/>'
+      + '<rect x="7.5" y="20.2" width="2.2" height="7.4" rx="1.1" fill="' + shirt + '"/>'
+      + '<rect x="18.3" y="20.2" width="2.2" height="7.4" rx="1.1" fill="' + shirt + '"/>'
+      + '<rect x="9.5" y="18.6" width="9" height="10.8" rx="3.2" fill="' + shirt + '"/>'
+      + '<path d="M11.6 18.8 14 20.9 16.4 18.8" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1" stroke-linecap="round"/>'
+      + '<rect x="12.9" y="15" width="2.2" height="4.6" rx="1.1" fill="' + L.skin + '"/>'
+      + '<circle cx="8" cy="13.4" r="1.3" fill="' + L.skin + '"/>'
+      + '<circle cx="20" cy="13.4" r="1.3" fill="' + L.skin + '"/>'
+      + '<circle cx="14" cy="12.9" r="6.2" fill="' + L.skin + '"/>'
+      + '<path d="M7.8 12.9a6.2 6.2 0 0 1 12.4 0z" fill="' + hair + '"/>'
+      + fringe
+      + eyes + mouth
+      + '<circle cx="10.2" cy="15.5" r="1.05" fill="#ff9aa6" opacity="0.45"/>'
+      + '<circle cx="17.8" cy="15.5" r="1.05" fill="#ff9aa6" opacity="0.45"/>'
+      + crown
+      + '</svg>';
+  }
+
+  /* ---------- 사람 캐릭터 움직임 (✨ 움직임 ON / ⏸️ 멈춤) ---------- */
+  var seatBase = {};
+  var wanderPos = {};
+  var wanderTimer = null;
+  var wanderTick = 0;
+  var WANDER_MS = 2400;
+
+  function motionOn() {
+    return !(state.settings && state.settings.motion === false);
+  }
+
+  function seatOf(id) {
+    return document.querySelector('#seatLayer [data-seat="' + id + '"]');
+  }
+
+  function clampPct(v) { return Math.max(3, Math.min(97, v)); }
+
+  /* 작업 중은 책상 앞에서 톡톡, 휴직은 빈백에서 느리게, 나머지는 통로·라운지 쪽으로 조금씩 */
+  function wanderSpan(m) {
+    if (m.isChief) return 0.8;
+    if (onLeave(m)) return 1.1;
+    if (displayStatus(m) === '작업 중') return 0.7;
+    if (displayStatus(m) === '미연결') return 0.9;
+    return 2.6;
+  }
+
+  function stepWander() {
+    if (!motionOn()) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    wanderTick++;
+    state.members.forEach(function (m) {
+      var base = seatBase[m.id];
+      var el = seatOf(m.id);
+      if (!base || !el) return;
+      var span = wanderSpan(m);
+      var nx, ny;
+      if (!m.isChief && !onLeave(m) && displayStatus(m) !== '작업 중' && wanderTick % 5 === 0) {
+        nx = clampPct(base.x + 2.5 + Math.random() * 4.5);   /* 카페 바·라운지(오른쪽) 쪽 큰 걸음 */
+        ny = clampPct(base.y + (Math.random() * 2 - 1) * 3.2);
+      } else {
+        nx = clampPct(base.x + (Math.random() * 2 - 1) * span);
+        ny = clampPct(base.y + (Math.random() * 2 - 1) * span * 0.8);
+      }
+      var prev = wanderPos[m.id];
+      var left = nx < (prev ? prev.x : base.x);
+      wanderPos[m.id] = { x: nx, y: ny, left: left };
+      el.style.setProperty('--x', nx.toFixed(2));
+      el.style.setProperty('--y', ny.toFixed(2));
+      el.classList.toggle('is-left', left);
+    });
+  }
+
+  function applyWanderPos() {
+    if (!motionOn()) return;
+    state.members.forEach(function (m) {
+      var p = wanderPos[m.id];
+      if (!p) return;
+      var el = seatOf(m.id);
+      if (!el) return;
+      el.style.setProperty('--x', p.x.toFixed(2));
+      el.style.setProperty('--y', p.y.toFixed(2));
+      el.classList.toggle('is-left', !!p.left);
+    });
+  }
+
+  function startWander() {
+    if (wanderTimer) return;
+    wanderTimer = setInterval(stepWander, WANDER_MS);
+    setTimeout(stepWander, 800);   /* 첫 화면에서 바로 조금 움직이게 */
+  }
+
+  function stopWander() {
+    if (wanderTimer) clearInterval(wanderTimer);
+    wanderTimer = null;
+  }
+
+  function renderMotion() {
+    var btn = $('motionToggle');
+    var label = $('motionLabel');
+    var room = $('pixelOffice');
+    var on = motionOn();
+    if (btn) {
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.classList.toggle('is-on', on);
+      btn.title = on ? '캐릭터가 오피스 안을 돌아다녀요 (누르면 멈춤)' : '캐릭터를 제자리에 멈췄어요 (누르면 다시 움직임)';
+    }
+    if (label) label.textContent = on ? '✨ 움직임 ON' : '⏸️ 멈춤';
+    if (room) room.classList.toggle('is-motion-off', !on);
+    if (on) startWander(); else stopWander();
+  }
+
   function renderOfficeMeta() {
-    var working = state.members.filter(function (m) { return m.status !== '미연결' && !onLeave(m); }).length;
+    var working = state.members.filter(function (m) { return displayStatus(m) !== '미연결' && !onLeave(m); }).length;
     if ($('officeCount')) $('officeCount').textContent = String(working);
     var latest = visibleThreads()[0];
     var live = latest
@@ -851,14 +1108,19 @@
     if (m.isChief) c += ' is-chief';
     if (m.id === 'pinky') c += ' is-pinky';
     if (onLeave(m)) c += ' is-away';
-    else if (m.status === '미연결') c += ' is-off';
-    else if (m.status === '작업 중') c += ' is-working';
+    else if (displayStatus(m) === '미연결') c += ' is-off';
+    else if (displayStatus(m) === '작업 중') c += ' is-working';
     else c += ' is-on';
+    /* 움직임 애니메이션 종류: 작업 중은 톡톡, 휴직은 느리게, 나머지는 걷기 */
+    if (m.isChief) c += ' is-idle';
+    else if (onLeave(m)) c += ' is-sway';
+    else if (displayStatus(m) === '작업 중') c += ' is-tap';
+    else c += ' is-walk';
     return c;
   }
 
   function deskStateText(m) {
-    return onLeave(m) ? '💤 휴직' : m.status;
+    return onLeave(m) ? '💤 휴직' : displayStatus(m);
   }
 
   /* 3D 클레이 디오라마(clay-office.webp) 위에 팀원 자리를 % 좌표로 얹습니다.
@@ -880,11 +1142,13 @@
     var leave = onLeave(m);
     var mark = m.isChief ? '👑 ' : (leave ? '💤 ' : '');
     var cls = deskClass(m) + (seat.zone === 'boss' ? ' is-boss' : '') + (seat.side === 'l' ? ' name-left' : '');
+    var walk = (1.8 + Math.random() * 1.1).toFixed(2);
+    seatBase[m.id] = { x: seat.x, y: seat.y };
     return '<button type="button" class="' + cls + '" data-seat="' + esc(m.id) + '"'
-      + ' style="--ring:' + ringOf(m.id) + ';--x:' + (seat.x) + ';--y:' + (seat.y) + '"'
+      + ' style="--ring:' + ringOf(m.id) + ';--x:' + (seat.x) + ';--y:' + (seat.y) + ';--walk:' + walk + 's"'
       + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + deskStateText(m)) + '"'
       + ' title="' + esc(m.name + ' · ' + deskStateText(m)) + '">'
-      + '<span class="ds-avatar" aria-hidden="true">' + esc(m.emoji || '🙂') + '</span>'
+      + '<span class="ds-avatar" aria-hidden="true">' + personSvg(m) + '</span>'
       + '<span class="ds-name">' + esc(mark + m.name) + '</span>'
       + '<span class="ds-dot" aria-hidden="true"></span>'
       + '<span class="ds-state sr-only">' + esc(deskStateText(m)) + '</span>'
@@ -900,6 +1164,7 @@
       if (m.isChief && !chief) chief = m;
       else team.push(m);
     });
+    seatBase = {};
     var deskQueue = CLAY_SEATS.filter(function (s) { return !s.zone; }).slice();
     var loungeQueue = CLAY_SEATS.filter(function (s) { return s.zone === 'lounge'; }).slice();
     var overflow = 0;
@@ -920,6 +1185,7 @@
     html += place(standing);
     layer.innerHTML = html;
     layer.setAttribute('data-seats', String(state.members.length));
+    applyWanderPos();
   }
 
   function renderWake() {
@@ -967,7 +1233,7 @@
         + '      <div class="tc-role">' + esc(m.role) + '</div>'
         + '    </div>'
         + '  </div>'
-        + '  <span class="badge ' + badgeClass(m.status) + '"><span class="dot"></span>' + esc(m.status) + '</span>'
+        + '  <span class="badge ' + badgeClass(displayStatus(m)) + '"><span class="dot"></span>' + esc(displayStatus(m)) + '</span>'
         + '  <p class="tc-desc">' + esc(m.desc || '') + '</p>'
         + '  <div class="tc-actions">' + actions + '</div>'
         + manage
@@ -1027,7 +1293,8 @@
     var chief = msg.from === 'chief';
     var via = viaLabel(msg.via);
     var isTg = via.indexOf('텔레그램') === 0;
-    var src = via ? '<span class="src-badge' + (isTg ? ' is-tg' : '') + '">' + esc(via) + '</span>' : '';
+    var isGroq = via.indexOf('⚡') === 0;
+    var src = via ? '<span class="src-badge' + (isTg ? ' is-tg' : (isGroq ? ' is-groq' : '')) + '">' + esc(via) + '</span>' : '';
     if (chief) {
       return '<div class="bubble-row is-chief">'
         + '<div class="b-main">'
@@ -1037,11 +1304,13 @@
         + '<div class="b-ava is-me" aria-hidden="true">예</div>'
         + '</div>';
     }
-    var leaveChip = onLeaveId(t.memberId) ? ' <span class="leave-chip">💤 휴직</span>' : '';
+    /* 3인 회의: 답글마다 작성자(msg.memberId)를 먼저 보고 이름·아바타·색을 고릅니다. */
+    var authorId = msgAuthorId(t, msg);
+    var leaveChip = onLeaveId(authorId) ? ' <span class="leave-chip">💤 휴직</span>' : '';
     return '<div class="bubble-row is-member">'
-      + '<div class="b-ava' + (onLeaveId(t.memberId) ? ' is-away' : '') + '" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</div>'
+      + '<div class="b-ava' + (onLeaveId(authorId) ? ' is-away' : '') + '" style="--ring:' + ringOf(authorId) + '" aria-hidden="true">' + esc(memberEmoji(authorId)) + '</div>'
       + '<div class="b-main">'
-      + '<div class="b-who"><span class="b-name">' + esc(memberName(t.memberId)) + '</span>' + leaveChip + src + '</div>'
+      + '<div class="b-who"><span class="b-name">' + esc(memberName(authorId)) + '</span>' + leaveChip + src + '</div>'
       + '<div class="bubble b-ai">' + esc(msg.text) + '</div>'
       + '<div class="b-time">' + esc(fmtChatTime(msg.at)) + '</div>'
       + '</div>'
@@ -1107,7 +1376,7 @@
     if (!list) return;
     list.innerHTML = threads.length ? threads.map(function (t) {
       var last = t.messages && t.messages.length ? t.messages[t.messages.length - 1] : null;
-      var preview = last ? (last.from === 'chief' ? '대장: ' : memberName(t.memberId) + ': ') + last.text : '내용 없음';
+      var preview = last ? (last.from === 'chief' ? '대장: ' : memberName(msgAuthorId(t, last)) + ': ') + last.text : '내용 없음';
       return ''
         + '<button type="button" class="thread-item" data-thread="' + esc(t.id) + '">'
         + '  <span class="ti-avatar" style="--ring:' + ringOf(t.memberId) + '" aria-hidden="true">' + esc(memberEmoji(t.memberId)) + '</span>'
@@ -1237,6 +1506,7 @@
     renderOfficeMeta();
     renderStats();
     renderSeatMap();
+    renderMotion();
     renderWake();
     renderTeam();
     renderMeeting();
@@ -1371,10 +1641,12 @@
           + '  </div>'
           + '</div>';
       }
+      var authorId = msgAuthorId(thread, msg);
+      var isGroq = via.indexOf('⚡') === 0;
       return '<div class="msg msg-member">'
-        + '  <span class="msg-ava" style="--ring:' + ringOf(thread.memberId) + '" aria-hidden="true">' + esc(memberEmoji(thread.memberId)) + '</span>'
+        + '  <span class="msg-ava" style="--ring:' + ringOf(authorId) + '" aria-hidden="true">' + esc(memberEmoji(authorId)) + '</span>'
         + '  <div class="msg-col">'
-        + '    <span class="msg-who">' + esc(memberName(thread.memberId)) + (via ? ' <span class="src-badge">' + esc(via) + '</span>' : '') + '</span>'
+        + '    <span class="msg-who">' + esc(memberName(authorId)) + (via ? ' <span class="src-badge' + (isGroq ? ' is-groq' : '') + '">' + esc(via) + '</span>' : '') + '</span>'
         + '    <div class="msg-bubble">' + esc(msg.text) + '</div>'
         + '    <span class="msg-meta">' + esc(fmtChatTime(msg.at)) + '</span>'
         + '  </div>'
@@ -1474,14 +1746,14 @@
     $('seatTitle').textContent = m.name + ' 팀원 카드';
     $('seatMeta').textContent = onLeave(m)
       ? '휴직 중 · 복직을 누를 때까지 단톡방 답변을 받지 않아요'
-      : (m.connected ? '연결됨 · 단톡방에서 바로 답해요' : '미연결 · 연결 문구를 복사해 초대하세요');
+      : (isConnected(m) ? '연결됨 · 단톡방에서 바로 답해요' : '미연결 · 연결 문구를 복사해 초대하세요');
     $('seatEmoji').textContent = m.emoji || '🙂';
     $('seatEmoji').style.setProperty('--ring', ringOf(m.id));
     $('seatName').textContent = m.name;
     $('seatRole').textContent = m.role || '';
     var badge = $('seatBadge');
-    badge.className = 'badge ' + badgeClass(m.status);
-    badge.innerHTML = '<span class="dot"></span>' + esc(m.status);
+    badge.className = 'badge ' + badgeClass(displayStatus(m));
+    badge.innerHTML = '<span class="dot"></span>' + esc(displayStatus(m));
     $('seatDesc').textContent = m.desc || '';
     var acts;
     if (m.isChief) {
@@ -1582,7 +1854,10 @@
   }
 
   /* ---------- 이벤트 ---------- */
+  var bound = false;
   function bind() {
+    if (bound) return;   /* DOMContentLoaded가 두 번 와도 이벤트가 겹치지 않게 */
+    bound = true;
     // 탭
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
       tab.addEventListener('click', function () { switchView(tab.getAttribute('data-view')); });
@@ -1637,6 +1912,16 @@
       $('seatLayer').addEventListener('click', function (e) {
         var seat = e.target.closest('[data-seat]');
         if (seat) openSeat(seat.getAttribute('data-seat'));
+      });
+    }
+
+    // 오피스 바: 캐릭터 움직임 ON/OFF
+    if ($('motionToggle')) {
+      $('motionToggle').addEventListener('click', function () {
+        state.settings.motion = !motionOn();
+        save(false);
+        renderMotion();
+        toast(motionOn() ? '캐릭터가 다시 돌아다녀요 ✨' : '캐릭터를 제자리에 멈췄어요 ⏸️');
       });
     }
 
@@ -2036,6 +2321,12 @@
     if (!url) {
       stopPolling();
       setSyncState('off');
+      /* 사용자가 직접 비운 경우에만 주소창의 #api=를 지웁니다(새로고침해도 되살아나지 않게). */
+      try {
+        if (/api=/.test(window.location.hash) || /api=/.test(window.location.search)) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } catch (err) { /* 무시 */ }
       toast('실시간 DB 연결을 해제했어요. 이제 이 브라우저에만 저장돼요.');
       return;
     }
@@ -2092,6 +2383,7 @@
     var fromHash = readApiFromHash();
     if (fromHash) save(false);
     renderAll();
+    startWander();
     try {
       if (!localStorage.getItem(KEY)) save(false);
     } catch (err) { /* 저장소를 쓸 수 없어도 화면은 동작합니다. */ }

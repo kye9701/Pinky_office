@@ -8,9 +8,12 @@
 <meta name="theme-color" content="#170f13" />
 <meta name="robots" content="noindex, nofollow" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="핑키오피스" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23e8365f'/%3E%3Ctext x='50' y='70' font-size='58' text-anchor='middle'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E" />
-<link rel="stylesheet" href="./styles.css?v=2026-11-27-clay2" />
+<link rel="stylesheet" href="./styles.css?v=2026-11-27-people1" />
 </head>
 <body>
 <div class="app">
@@ -57,8 +60,12 @@
         <span class="ob-ico" aria-hidden="true">🏠</span>
         <span class="ob-text">오피스 · <b id="officeCount">5</b>명 근무 중</span>
         <span class="ob-live" id="officeLive">핑키 활동 중</span>
-        <span class="ob-ver" id="officeVersion">v2026.11.27</span>
+        <span class="ob-ver" id="officeVersion">v2026.11.27b</span>
         <span class="ob-fold" id="officeFold">접기</span>
+      </button>
+      <button type="button" id="motionToggle" class="motion-toggle is-on" aria-pressed="true"
+        title="캐릭터가 오피스 안을 돌아다녀요 (누르면 멈춤)">
+        <span id="motionLabel">✨ 움직임 ON</span>
       </button>
     </div>
 
@@ -309,6 +316,7 @@
         <div>
           <b>📱 폰에서 한 번에 열기</b>
           <p class="muted small">지금 저장된 DB 주소로 여는 <b>원클릭 링크</b>를 복사해요. 폰 브라우저에 붙여 열면 설정 없이 바로 연결돼요.</p>
+          <p class="muted small"><b>홈 화면에 추가</b>는 <b>지금 주소 그대로</b> 저장돼요. 그래서 원클릭 링크(<code>#api=…</code>가 붙은 주소)로 연 상태에서 추가해야 홈 화면 앱에서도 DB가 이어져요. 그냥 주소만 추가하면 앱이 <b>「이 브라우저에만 저장」</b>으로 열려요.</p>
         </div>
         <div class="admin-actions">
           <button type="button" class="mini-btn" id="copyLinkBtn">링크 복사</button>
@@ -505,6 +513,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=2026-11-27-clay2"></script>
+<script src="./app.js?v=2026-11-27-people1"></script>
 </body>
 </html>
