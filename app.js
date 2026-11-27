@@ -423,8 +423,8 @@
     /* 홈 화면 웹앱으로 열렸는데 DB 주소가 비어 있으면 이유를 짚어 줍니다. */
     if (isStandaloneApp()) {
       if (title) title.textContent = '홈 화면 앱으로 열려 DB 주소가 없어요!';
-      if (text) text.innerHTML = '「홈 화면에 추가」할 때 주소에 <code>#api=…</code>가 들어 있어야 DB가 이어져요. '
-        + '⚙️ 설정에서 <b>원클릭 링크</b>를 복사해 주소창에 붙여 연 뒤, 그 주소로 다시 홈 화면에 추가해 주세요.';
+      if (text) text.innerHTML = '「홈 화면에 추가」는 <b>그때 열려 있던 주소</b>를 저장해요. 사파리에서 <b>원클릭 링크</b>(<code>#api=…</code>가 붙은 주소)로 연 화면에서 추가해야 홈 화면 앱에서도 DB가 이어져요. '
+        + '이미 추가했다면 사파리로 원클릭 링크를 열고 다시 추가해 주세요. ⚙️ 설정에서 DB 주소를 직접 넣을 수도 있어요.';
     } else {
       if (title) title.textContent = '지금 「이 브라우저에만 저장」 상태예요!';
       if (text) text.innerHTML = '원클릭 링크(<code>#api=…</code>)로 열거나 <b>⚙️ 설정</b>에서 DB 주소를 넣어야 AI·텔레그램과 연결돼요. 이 상태에서는 AI가 단톡방을 읽지 못해 답도 못 해요.';
