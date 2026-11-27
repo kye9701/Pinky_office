@@ -1054,7 +1054,7 @@
   }
 
   function applyWanderPos() {
-    if (!motionOn()) return;
+    /* 멈춤 상태에서 화면이 다시 그려져도 캐릭터가 제자리로 튀지 않게, 마지막 위치를 그대로 얹습니다. */
     state.members.forEach(function (m) {
       var p = wanderPos[m.id];
       if (!p) return;
