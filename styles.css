@@ -1430,13 +1430,13 @@ code {
 
 @media (min-width: 760px) {
   .app { padding: 0 18px calc(160px + env(safe-area-inset-bottom)); }
-  .desk-seat { width: 24px; height: 24px; }
-  .desk-seat.is-boss { width: 28px; height: 28px; }
-  .ds-avatar { font-size: 13px; }
-  .desk-seat.is-boss .ds-avatar { font-size: 15px; }
-  .ds-name { font-size: 9.5px; padding: 1px 4px 1.5px; left: calc(100% + 3px); }
-  .desk-seat.name-left .ds-name { right: calc(100% + 3px); }
-  .ds-dot { width: 7px; height: 7px; }
+  .desk-seat { width: 30px; height: 30px; }
+  .desk-seat.is-boss { width: 34px; height: 34px; }
+  .ds-avatar { font-size: 16px; }
+  .desk-seat.is-boss .ds-avatar { font-size: 18px; }
+  .ds-name { font-size: 11px; padding: 1px 5px 2px; left: calc(100% + 4px); }
+  .desk-seat.name-left .ds-name { right: calc(100% + 4px); }
+  .ds-dot { width: 8px; height: 8px; box-shadow: 0 0 0 1.5px #fffdf6; }
   .clay-legend { font-size: 11px; gap: 10px; }
   .brand h1 { font-size: 21px; }
   .team-grid { grid-template-columns: repeat(3, 1fr); }
