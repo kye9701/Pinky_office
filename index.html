@@ -63,17 +63,14 @@
     </div>
 
     <div class="seat-wrap" id="seatWrap">
-      <div class="pixel-room" id="pixelOffice" aria-label="픽셀 오피스 — 팀원마다 책상과 컴퓨터가 있는 방">
-        <div class="room-wall" aria-hidden="true">
-          <span class="rw-window"><span class="rw-sun"></span><span class="rw-cloud"></span></span>
-          <span class="rw-sign">픽셀 오피스</span>
-          <span class="rw-clock"></span>
-        </div>
-        <div class="room-floor">
-          <span class="room-prop prop-plant" aria-hidden="true"></span>
-          <span class="room-prop prop-cooler" aria-hidden="true"></span>
-          <div id="seatLayer" class="seat-layer"></div>
-        </div>
+      <div class="clay-room" id="pixelOffice" aria-label="클레이 오피스 — 팀원마다 자리가 있는 3D 클레이 미니어처 사무실">
+        <div id="seatLayer" class="seat-layer"></div>
+      </div>
+      <div class="clay-legend" aria-hidden="true">
+        <span class="lg lg-working"><i></i>작업 중</span>
+        <span class="lg"><i></i>대기</span>
+        <span class="lg lg-off"><i></i>미연결</span>
+        <span class="lg lg-away">💤 휴직</span>
       </div>
       <div class="stats-line">
         <span class="stats-label">오늘의 오피스</span>

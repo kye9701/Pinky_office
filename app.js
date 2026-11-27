@@ -861,19 +861,33 @@
     return onLeave(m) ? '💤 휴직' : m.status;
   }
 
-  function deskHtml(m, extraClass) {
-    return '<button type="button" class="' + deskClass(m) + (extraClass ? ' ' + extraClass : '') + '" data-seat="' + esc(m.id) + '"'
-      + ' style="--ring:' + ringOf(m.id) + '"'
-      + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + m.status) + '">'
-      + '<span class="ds-name">' + (m.isChief ? '👑 ' : '') + esc(m.name) + '</span>'
-      + '<span class="ds-scene" aria-hidden="true">'
-      + '<span class="ds-chair"></span>'
-      + '<span class="ds-avatar">' + esc(m.emoji || '🙂') + '</span>'
-      + '<span class="ds-stand"></span>'
-      + '<span class="ds-monitor"><span class="ds-screen"></span><span class="ds-led"></span></span>'
-      + '<span class="ds-desk"><span class="ds-keyboard"></span><span class="ds-mug"></span><span class="ds-legs"></span></span>'
-      + '</span>'
-      + '<span class="ds-state">' + esc(deskStateText(m)) + '</span>'
+  /* 3D 클레이 디오라마(clay-office.webp) 위에 팀원 자리를 % 좌표로 얹습니다.
+     왼쪽 긴 회의 테이블 8자리 · 가운데 소파 2 · 라운지 체어 2 · 오른쪽 휴게 빈백(휴직 자리).
+     휴직한 팀원은 오른쪽 빈백/쉼터로 자리를 옮기고, 비워진 책상은 빈자리가 됩니다. */
+  var CLAY_SEATS = [
+    { x: 25.4, y: 37.2, zone: 'boss', side: 'r' },
+    { x: 16.4, y: 50.8, side: 'l' }, { x: 35.0, y: 50.8, side: 'r' },
+    { x: 16.4, y: 62.4, side: 'l' }, { x: 35.0, y: 62.4, side: 'r' },
+    { x: 16.4, y: 74.0, side: 'l' }, { x: 35.0, y: 74.0, side: 'l' },
+    { x: 51.4, y: 54.0, side: 'r' },
+    { x: 40.6, y: 71.4, side: 'r' }, { x: 63.6, y: 70.0, side: 'r' },
+    { x: 42.0, y: 41.4, side: 'r' }, { x: 57.4, y: 43.4, side: 'r' },
+    { x: 86.2, y: 38.6, side: 'l' },
+    { x: 72.0, y: 45.4, zone: 'lounge', side: 'r' }, { x: 80.0, y: 55.2, zone: 'lounge', side: 'l' }
+  ];
+
+  function deskHtml(m, seat) {
+    var leave = onLeave(m);
+    var mark = m.isChief ? '👑 ' : (leave ? '💤 ' : '');
+    var cls = deskClass(m) + (seat.zone === 'boss' ? ' is-boss' : '') + (seat.side === 'l' ? ' name-left' : '');
+    return '<button type="button" class="' + cls + '" data-seat="' + esc(m.id) + '"'
+      + ' style="--ring:' + ringOf(m.id) + ';--x:' + (seat.x) + ';--y:' + (seat.y) + '"'
+      + ' aria-label="' + esc(m.name + ' · ' + (m.role || '') + ' · ' + deskStateText(m)) + '"'
+      + ' title="' + esc(m.name + ' · ' + deskStateText(m)) + '">'
+      + '<span class="ds-avatar" aria-hidden="true">' + esc(m.emoji || '🙂') + '</span>'
+      + '<span class="ds-name">' + esc(mark + m.name) + '</span>'
+      + '<span class="ds-dot" aria-hidden="true"></span>'
+      + '<span class="ds-state sr-only">' + esc(deskStateText(m)) + '</span>'
       + '</button>';
   }
 
@@ -886,9 +900,24 @@
       if (m.isChief && !chief) chief = m;
       else team.push(m);
     });
-    var html = '';
-    if (chief) html += '<div class="boss-row">' + deskHtml(chief, 'is-boss') + '</div>';
-    html += team.map(function (m) { return deskHtml(m); }).join('');
+    var deskQueue = CLAY_SEATS.filter(function (s) { return !s.zone; }).slice();
+    var loungeQueue = CLAY_SEATS.filter(function (s) { return s.zone === 'lounge'; }).slice();
+    var overflow = 0;
+    function nextSeat(loungeFirst) {
+      if (loungeFirst && loungeQueue.length) return loungeQueue.shift();
+      if (deskQueue.length) return deskQueue.shift();
+      if (loungeQueue.length) return loungeQueue.shift();
+      var s = CLAY_SEATS[(overflow++) % CLAY_SEATS.length];
+      return { x: s.x, y: Math.min(94, s.y + 3.6) };
+    }
+    function place(list, loungeFirst) {
+      return list.map(function (m) { return deskHtml(m, nextSeat(loungeFirst)); }).join('');
+    }
+    var standing = team.filter(function (m) { return !onLeave(m); });
+    var away = team.filter(function (m) { return onLeave(m); });
+    var html = chief ? deskHtml(chief, CLAY_SEATS[0]) : '';
+    html += place(away, true);   /* 휴직자는 먼저 오른쪽 빈백/쉼터 자리로 */
+    html += place(standing);
     layer.innerHTML = html;
     layer.setAttribute('data-seats', String(state.members.length));
   }
