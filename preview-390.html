@@ -11,6 +11,7 @@
 </style>
 </head>
 <body>
-  <div class="stage"><iframe src="./index.html" title="핑키오피스 390 미리보기"></iframe></div>
+  <div class="stage"><iframe id="frame" title="핑키오피스 390 미리보기"></iframe></div>
+  <script>document.getElementById('frame').src = './index.html?t=' + Date.now();</script>
 </body>
 </html>
