@@ -322,9 +322,9 @@ body {
   position: absolute;
   left: 50%;
   bottom: -1px;
-  width: 15px;
-  height: 20.4px;
-  margin-left: -7.5px;
+  width: 16.5px;
+  height: 22.4px;
+  margin-left: -8.25px;
   transform: scaleX(1);
   transition: transform 0.18s ease;
   pointer-events: none;
@@ -336,7 +336,8 @@ body {
   width: 100%;
   height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 1px 1.2px rgba(42, 22, 8, 0.4));
+  /* 밝은 오피스 배경에서도 캐릭터 윤곽이 보이게 얇은 흰 테두리 + 바닥 그림자 */
+  filter: drop-shadow(0 0 1px rgba(255, 253, 246, 0.9)) drop-shadow(0 1px 1.2px rgba(42, 22, 8, 0.45));
 }
 .ds-person .p-spot {
   fill: var(--ring, #ff6f93);
@@ -408,7 +409,7 @@ body {
 .desk-seat.is-away .ds-dot { display: none; }
 .desk-seat.is-chief .ds-name { color: #5a3d05; background: rgba(255, 247, 220, 0.9); }
 .desk-seat.is-boss { width: 19px; height: 19px; }
-.desk-seat.is-boss .ds-avatar { width: 18px; height: 24.4px; margin-left: -9px; }
+.desk-seat.is-boss .ds-avatar { width: 20px; height: 27.1px; margin-left: -10px; }
 .desk-seat.is-chief .ds-person .p-spot { opacity: 0.8; }
 
 @keyframes dotPulse {
@@ -1467,8 +1468,8 @@ code {
 
 /* ---------- 넓은 화면 ---------- */
 @media (min-width: 380px) {
-  .ds-avatar { width: 16.5px; height: 22.4px; margin-left: -8.25px; }
-  .desk-seat.is-boss .ds-avatar { width: 20px; height: 27.2px; margin-left: -10px; }
+  .ds-avatar { width: 18px; height: 24.4px; margin-left: -9px; }
+  .desk-seat.is-boss .ds-avatar { width: 22px; height: 29.9px; margin-left: -11px; }
   .ds-name { font-size: 7.4px; }
 }
 
@@ -1478,8 +1479,8 @@ code {
   .top-room-meta { display: block; font-size: 9.5px; color: var(--muted); }
   .office-title .ob-ver { display: inline; font-size: 9px; color: #7d6877; }
   .n-hint { display: inline; }
-  .ds-avatar { width: 18.5px; height: 25.2px; margin-left: -9.25px; }
-  .desk-seat.is-boss .ds-avatar { width: 22.5px; height: 30.6px; margin-left: -11.25px; }
+  .ds-avatar { width: 20px; height: 27.1px; margin-left: -10px; }
+  .desk-seat.is-boss .ds-avatar { width: 24px; height: 32.6px; margin-left: -12px; }
   .ds-name { font-size: 8px; }
   .team-grid { grid-template-columns: 1fr 1fr; }
   .kanban { grid-template-columns: 1fr 1fr; }
@@ -1493,8 +1494,8 @@ code {
   .app { padding: 0 18px calc(160px + env(safe-area-inset-bottom)); }
   .desk-seat { width: 30px; height: 30px; }
   .desk-seat.is-boss { width: 34px; height: 34px; }
-  .ds-avatar { width: 30px; height: 40.8px; margin-left: -15px; }
-  .desk-seat.is-boss .ds-avatar { width: 36px; height: 48.9px; margin-left: -18px; }
+  .ds-avatar { width: 32px; height: 43.4px; margin-left: -16px; }
+  .desk-seat.is-boss .ds-avatar { width: 38px; height: 51.6px; margin-left: -19px; }
   .ds-name { font-size: 11px; padding: 1px 5px 2px; left: calc(100% + 4px); }
   .desk-seat.name-left .ds-name { right: calc(100% + 4px); }
   .ds-dot { width: 8px; height: 8px; box-shadow: 0 0 0 1.5px #fffdf6; }
