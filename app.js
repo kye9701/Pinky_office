@@ -313,7 +313,8 @@
           apiUrl: (saved.settings && saved.settings.apiUrl) || '',
           apiSecret: (saved.settings && saved.settings.apiSecret) || '',
           dirty: !!(saved.settings && saved.settings.dirty),
-          wakeMode: (saved.settings && saved.settings.wakeMode) || '전원'
+          wakeMode: (saved.settings && saved.settings.wakeMode) || '전원',
+          motion: !(saved.settings && saved.settings.motion === false)
         },
         members: members,
         fired: Array.isArray(saved.fired) ? saved.fired : [],
